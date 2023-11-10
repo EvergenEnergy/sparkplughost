@@ -1,0 +1,6 @@
+version: '3.9'
+services:
+  hivemq:
+    image: hivemq/hivemq-ce:2023.9
+    ports:
+      - "1883:1883"
