@@ -6,8 +6,14 @@ on:
   merge_group:
     branches: [ main ]
 
-permissions: read-all
-
 jobs:
-  scan-pr:
-    uses: "google/osv-scanner/.github/workflows/osv-scanner-reusable-pr.yml@main"
+  vuln-scan:
+    name: Run osv-scanner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21.x'
+      - uses: google/osv-scanner/actions/scanner@main
