@@ -30,11 +30,14 @@ Make sure that all unit tests pass by running:
 go test ./...
 ```
 
-Integration tests are available and can be run by setting the INTEGRATION environment variable:
+Integration tests are available and can be run by setting the MQTT_BROKER_URL environment variable:
 
 ```bash
-INTEGRATION=true go test ./...
+MQTT_BROKER_URL=tcp://localhost:1883 go test ./...
 ```
+
+The provided [docker-compose](docker-compose.yml) file contains a [HiveMQ](https://github.com/hivemq/hivemq-community-edition)
+service that can be used to run the integration tests against a local broker.
 
 ## Commit Messages
 
