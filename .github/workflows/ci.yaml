@@ -24,7 +24,7 @@ jobs:
       - name: Test
         env:
           MQTT_BROKER_URL: "tcp://localhost:1883"
-        run: go test -v ./...
+        run: go test -race -v ./...
 
   lint:
     runs-on: ubuntu-latest
