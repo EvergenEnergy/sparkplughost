@@ -50,16 +50,16 @@ func parseTopic(rawTopic string) (topic, error) {
 		}, nil
 	}
 
-	messageType, err := parseMessageType(topicParts[2])
+	msgType, err := parseMessageType(topicParts[2])
 	if err != nil {
 		return topic{}, err
 	}
 
 	switch {
-	case messageType.isEdgeNodeMessage():
-		return parseEdgeNodeTopic(topicParts, messageType)
-	case messageType.isDeviceMessage():
-		return parseDeviceTopic(topicParts, messageType)
+	case msgType.isEdgeNodeMessage():
+		return parseEdgeNodeTopic(topicParts, msgType)
+	case msgType.isDeviceMessage():
+		return parseDeviceTopic(topicParts, msgType)
 	default:
 		return topic{}, fmt.Errorf("invalid topic: %s", rawTopic)
 	}
@@ -69,7 +69,11 @@ func parseDeviceTopic(topicParts []string, messageType messageType) (topic, erro
 	rawTopic := strings.Join(topicParts, "/")
 
 	if len(topicParts) != 5 {
-		return topic{}, fmt.Errorf("invalid topic (%s) for device message. It should follow the form spBv1.0/%s/edge_node_id/device_id", rawTopic, messageType)
+		return topic{}, fmt.Errorf(
+			"invalid topic (%s) for device message. It should follow the form spBv1.0/%s/edge_node_id/device_id",
+			rawTopic,
+			messageType,
+		)
 	}
 
 	groupID := topicParts[1]

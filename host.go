@@ -18,6 +18,7 @@ type HostApplication struct {
 	brokerURL                string
 	lastWillMessageTimestamp time.Time
 	logger                   *slog.Logger
+	metricHandler            MetricHandler
 	edgeNodeManager          *edgeNodeManager
 	disconnectTimeout        time.Duration
 }
@@ -32,7 +33,7 @@ func NewHostApplication(brokerURL, hostID string, opts ...Option) *HostApplicati
 		hostID:            hostID,
 		brokerURL:         brokerURL,
 		logger:            cfg.logger,
-		edgeNodeManager:   newEdgeNodeManager(cfg.metricHandler),
+		metricHandler:     cfg.metricHandler,
 		disconnectTimeout: cfg.disconnectTimeout,
 	}
 }
@@ -80,6 +81,7 @@ func (h *HostApplication) initClient() {
 	h.setLastWill(mqttOpts)
 
 	h.mqttClient = mqtt.NewClient(mqttOpts)
+	h.edgeNodeManager = newEdgeNodeManager(h.metricHandler, newCommandPublisher(h.mqttClient), h.logger)
 }
 
 func (h *HostApplication) stateTopic() string {
@@ -104,15 +106,16 @@ func (h *HostApplication) onConnect(client mqtt.Client) {
 	// successfully subscribing its own spBv1.0/STATE/sparkplug_host_id topic.
 	h.publishOnlineStatus(true, h.lastWillMessageTimestamp)
 
-	client.Subscribe(fmt.Sprintf("%s/+/NBIRTH/+", sparkplugbNamespace), byte(0), h.nodeBirthHandler)
-	client.Subscribe(fmt.Sprintf("%s/+/NDEATH/+", sparkplugbNamespace), byte(0), h.nodeDeathHandler)
+	client.Subscribe(fmt.Sprintf("%s/+/NBIRTH/+", sparkplugbNamespace), byte(0), h.msgHandler)
+	client.Subscribe(fmt.Sprintf("%s/+/NDEATH/+", sparkplugbNamespace), byte(1), h.msgHandler)
+	client.Subscribe(fmt.Sprintf("%s/+/NDATA/+", sparkplugbNamespace), byte(0), h.msgHandler)
 }
 
 func (h *HostApplication) onReconnect(_ mqtt.Client, options *mqtt.ClientOptions) {
 	h.setLastWill(options)
 }
 
-func (h *HostApplication) stateHandler(client mqtt.Client, message mqtt.Message) {
+func (h *HostApplication) stateHandler(_ mqtt.Client, message mqtt.Message) {
 	// the STATE topic uses QOS 1, so we need to make sure we ACK the message
 	defer message.Ack()
 
@@ -155,48 +158,41 @@ func (h *HostApplication) publishOnlineStatus(online bool, timestamp time.Time) 
 	return h.mqttClient.Publish(h.stateTopic(), byte(1), true, payload)
 }
 
-func (h *HostApplication) nodeBirthHandler(_ mqtt.Client, message mqtt.Message) {
-	topic, err := parseTopic(message.Topic())
+func (h *HostApplication) msgHandler(_ mqtt.Client, message mqtt.Message) {
+	defer message.Ack()
+
+	sparkplugMsg, err := parseSparkplugMessage(message)
 	if err != nil {
-		h.logger.Error("Invalid topic on NBIRTH message", "error", err.Error())
+		h.logger.Error(
+			"Failed to unmarshal protobuf payload",
+			"error", err.Error(),
+			"topic", message.Topic(),
+		)
 		return
 	}
 
-	var payload protobuf.Payload
-
-	err = proto.Unmarshal(message.Payload(), &payload)
-	if err != nil {
-		h.logger.Error("Failed to unmarshal protobuf payload on NBIRTH", "error", err.Error())
-		return
-	}
-
-	err = h.edgeNodeManager.edgeNodeOnline(topic.edgeNodeDescriptor(), &payload)
-	if err != nil {
-		h.logger.Error(err.Error(), "groupID", topic.groupID, "edgeNodeID", topic.edgeNodeID)
-		return
-	}
+	h.edgeNodeManager.processMessage(sparkplugMsg)
 }
 
-func (h *HostApplication) nodeDeathHandler(_ mqtt.Client, message mqtt.Message) {
-	topic, err := parseTopic(message.Topic())
+type sparkplugMessage struct {
+	topic   topic
+	payload *protobuf.Payload
+}
+
+func parseSparkplugMessage(msg mqtt.Message) (sparkplugMessage, error) {
+	msgTopic, err := parseTopic(msg.Topic())
 	if err != nil {
-		h.logger.Error("Invalid topic on NDEATH message", "error", err.Error())
-		return
+		return sparkplugMessage{}, err
 	}
 
 	var payload protobuf.Payload
 
-	err = proto.Unmarshal(message.Payload(), &payload)
+	err = proto.Unmarshal(msg.Payload(), &payload)
 	if err != nil {
-		h.logger.Error("Failed to unmarshal protobuf payload on NDEATH", "error", err.Error())
-		return
+		return sparkplugMessage{}, err
 	}
 
-	err = h.edgeNodeManager.edgeNodeOffline(topic.edgeNodeDescriptor(), &payload)
-	if err != nil {
-		h.logger.Error(err.Error(), "groupID", topic.groupID, "edgeNodeID", topic.edgeNodeID)
-		return
-	}
+	return sparkplugMessage{topic: msgTopic, payload: &payload}, nil
 }
 
 type statusPayload struct {

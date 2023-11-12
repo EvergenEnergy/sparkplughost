@@ -3,6 +3,7 @@ package sparkplughost
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -28,17 +29,51 @@ type edgeNode struct {
 }
 
 type edgeNodeManager struct {
-	mu            sync.Mutex
-	nodes         map[EdgeNodeDescriptor]edgeNode
-	metrics       map[EdgeNodeDescriptor]*edgeNodeMetrics
-	metricHandler MetricHandler
+	mu               sync.Mutex
+	nodes            map[EdgeNodeDescriptor]edgeNode
+	metrics          map[EdgeNodeDescriptor]*edgeNodeMetrics
+	metricHandler    MetricHandler
+	commandPublisher *commandPublisher
+	logger           *slog.Logger
 }
 
-func newEdgeNodeManager(metricHandler MetricHandler) *edgeNodeManager {
+func newEdgeNodeManager(
+	metricHandler MetricHandler,
+	commandPublisher *commandPublisher,
+	logger *slog.Logger,
+) *edgeNodeManager {
 	return &edgeNodeManager{
-		nodes:         make(map[EdgeNodeDescriptor]edgeNode),
-		metrics:       make(map[EdgeNodeDescriptor]*edgeNodeMetrics),
-		metricHandler: metricHandler,
+		nodes:            make(map[EdgeNodeDescriptor]edgeNode),
+		metrics:          make(map[EdgeNodeDescriptor]*edgeNodeMetrics),
+		metricHandler:    metricHandler,
+		commandPublisher: commandPublisher,
+		logger:           logger,
+	}
+}
+
+func (m *edgeNodeManager) processMessage(msg sparkplugMessage) {
+	msgTopic := msg.topic
+
+	var err error
+
+	switch msgTopic.messageType {
+	case messageTypeNBIRTH:
+		err = m.edgeNodeOnline(msgTopic.edgeNodeDescriptor(), msg.payload)
+	case messageTypeNDEATH:
+		err = m.edgeNodeOffline(msgTopic.edgeNodeDescriptor(), msg.payload)
+	case messageTypeNDATA:
+		err = m.edgeNodeData(msgTopic.edgeNodeDescriptor(), msg.payload.Metrics)
+	}
+
+	if err != nil {
+		m.logger.Error(
+			"Error processing message",
+			"error", err.Error(),
+			"message_type", msgTopic.messageType,
+			"group_id", msgTopic.groupID,
+			"edge_node_id", msgTopic.edgeNodeID,
+			"device_id", msgTopic.deviceID,
+		)
 	}
 }
 
@@ -113,6 +148,7 @@ func (m *edgeNodeManager) edgeNodeOffline(edgeNodeDescriptor EdgeNodeDescriptor,
 	metrics, found := m.metrics[edgeNodeDescriptor]
 	if found {
 		metrics.setNodeMetricsAsStale()
+
 		for _, metric := range metrics.nodeMetrics {
 			m.metricHandler(metric)
 		}
@@ -121,6 +157,35 @@ func (m *edgeNodeManager) edgeNodeOffline(edgeNodeDescriptor EdgeNodeDescriptor,
 	m.nodes[edgeNodeDescriptor] = node
 
 	return nil
+}
+
+func (m *edgeNodeManager) edgeNodeData(descriptor EdgeNodeDescriptor, newDataMetrics []*protobuf.Payload_Metric) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	node, found := m.nodes[descriptor]
+	if !found || !node.online {
+		return m.commandPublisher.requestRebirth(descriptor)
+	}
+
+	metrics, found := m.metrics[descriptor]
+	if !found {
+		return m.commandPublisher.requestRebirth(descriptor)
+	}
+
+	err := metrics.addNodeMetrics(newDataMetrics)
+	if err != nil {
+		if errors.Is(err, errOutOfSync) {
+			return m.commandPublisher.requestRebirth(descriptor)
+		}
+
+		return err
+	}
+
+	for _, metric := range newDataMetrics {
+		m.metricHandler(metrics.nodeMetrics[metric.GetName()])
+	}
+	return err
 }
 
 func birthSequenceNumber(payload *protobuf.Payload) (int64, error) {
