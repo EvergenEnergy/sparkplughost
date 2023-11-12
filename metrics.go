@@ -28,7 +28,7 @@ type HostMetric struct {
 }
 
 // manages all metrics for a specific edge node
-// and its associated devices
+// and its associated devices.
 type edgeNodeMetrics struct {
 	edgeNodeDescriptor EdgeNodeDescriptor
 	aliasToName        map[uint64]string
@@ -74,6 +74,32 @@ func (m *edgeNodeMetrics) addNodeBirthMetrics(metricsProto []*protobuf.Payload_M
 
 	m.aliasToName = aliasToName
 	m.nodeMetrics = metrics
+
+	return nil
+}
+
+func (m *edgeNodeMetrics) addNodeMetrics(metricsProto []*protobuf.Payload_Metric) error {
+	for _, metric := range metricsProto {
+		if metric.Name == nil && metric.Alias != nil {
+			name, aliasFound := m.aliasToName[metric.GetAlias()]
+			if !aliasFound {
+				return errOutOfSync
+			}
+
+			metric.Name = &name
+		}
+
+		_, metricFound := m.nodeMetrics[metric.GetName()]
+		if !metricFound {
+			return errOutOfSync
+		}
+
+		m.nodeMetrics[metric.GetName()] = HostMetric{
+			EdgeNodeDescriptor: m.edgeNodeDescriptor,
+			Metric:             metric,
+			Quality:            MetricQualityGood,
+		}
+	}
 
 	return nil
 }
