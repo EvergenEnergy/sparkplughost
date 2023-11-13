@@ -22,19 +22,22 @@ func newCommandPublisher(mqttClient mqtt.Client) *commandPublisher {
 }
 
 func (c *commandPublisher) requestRebirth(descriptor EdgeNodeDescriptor) error {
+	return c.writeEdgeNodeMetrics(descriptor, []*protobuf.Payload_Metric{
+		{
+			Name:     proto.String(nodeRebirthMetricName),
+			Datatype: proto.Uint32(uint32(protobuf.DataType_Boolean.Number())),
+			Value:    &protobuf.Payload_Metric_BooleanValue{BooleanValue: true},
+		},
+	})
+}
+
+func (c *commandPublisher) writeEdgeNodeMetrics(descriptor EdgeNodeDescriptor, metrics []*protobuf.Payload_Metric) error {
 	topic := fmt.Sprintf("%s/%s/NCMD/%s", sparkplugbNamespace, descriptor.GroupID, descriptor.EdgeNodeID)
 	ts := proto.Uint64(uint64(time.Now().UnixMilli()))
 
 	payload := &protobuf.Payload{
 		Timestamp: ts,
-		Metrics: []*protobuf.Payload_Metric{
-			{
-				Timestamp: ts,
-				Name:      proto.String(nodeRebirthMetricName),
-				Datatype:  proto.Uint32(uint32(protobuf.DataType_Boolean.Number())),
-				Value:     &protobuf.Payload_Metric_BooleanValue{BooleanValue: true},
-			},
-		},
+		Metrics:   metrics,
 	}
 
 	bytes, err := proto.Marshal(payload)
