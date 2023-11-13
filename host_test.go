@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"os"
 	"sync"
@@ -15,6 +16,8 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"google.golang.org/protobuf/proto"
 )
+
+var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 func TestHostConnectsAndSendsBirthCertificate(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
@@ -108,17 +111,7 @@ func TestHandlesMetricsOnNodeDeath(t *testing.T) {
 			},
 		})
 
-		deadPayload := &protobuf.Payload{
-			Metrics: []*protobuf.Payload_Metric{
-				{
-					Name:     proto.String("bdSeq"),
-					Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
-					Value:    &protobuf.Payload_Metric_LongValue{LongValue: 0},
-				},
-			},
-		}
-		protoPayload, _ := proto.Marshal(deadPayload)
-		client.Publish("spBv1.0/test-group/NDEATH/test-node", byte(0), false, protoPayload)
+		publishNodeDeath(client)
 	}
 
 	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
@@ -153,17 +146,13 @@ func TestHandlesMetricsOnNodeData(t *testing.T) {
 			},
 		})
 
-		nDataPayload := &protobuf.Payload{
-			Metrics: []*protobuf.Payload_Metric{
-				{
-					Name:     proto.String("foo"),
-					Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
-					Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
-				},
+		publishNodeData(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		}
-		protoPayload, _ := proto.Marshal(nDataPayload)
-		client.Publish("spBv1.0/test-group/NDATA/test-node", byte(0), false, protoPayload)
+		})
 	}
 
 	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
@@ -199,17 +188,13 @@ func TestHandlesMetricsWithAliasOnNodeData(t *testing.T) {
 			},
 		})
 
-		nDataPayload := &protobuf.Payload{
-			Metrics: []*protobuf.Payload_Metric{
-				{
-					Alias:    proto.Uint64(15),
-					Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
-					Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
-				},
+		publishNodeData(client, []*protobuf.Payload_Metric{
+			{
+				Alias:    proto.Uint64(15),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		}
-		protoPayload, _ := proto.Marshal(nDataPayload)
-		client.Publish("spBv1.0/test-group/NDATA/test-node", byte(0), false, protoPayload)
+		})
 	}
 
 	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
@@ -235,39 +220,19 @@ func TestRequestsRebirthWhenReceivingDataWithoutPreviousBirth(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	receivedRebirthRequest := false
-
 	testFn := func(client mqtt.Client) {
-		client.Subscribe("spBv1.0/test-group/NCMD/test-node", byte(0), func(_ mqtt.Client, message mqtt.Message) {
-			var payload protobuf.Payload
-			_ = proto.Unmarshal(message.Payload(), &payload)
-
-			for _, metric := range payload.Metrics {
-				if metric.GetName() == "Node Control/Rebirth" {
-					receivedRebirthRequest = metric.GetBooleanValue()
-					return
-				}
-			}
+		publishNodeData(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
+			},
 		})
 
-		nDataPayload := &protobuf.Payload{
-			Metrics: []*protobuf.Payload_Metric{
-				{
-					Name:     proto.String("foo"),
-					Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
-					Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
-				},
-			},
-		}
-		protoPayload, _ := proto.Marshal(nDataPayload)
-		client.Publish("spBv1.0/test-group/NDATA/test-node", byte(0), false, protoPayload)
+		waitForRebirthRequest(t, client)
 	}
 
 	runAndCollectAllMetrics(ctx, t, testFn)
-
-	if !receivedRebirthRequest {
-		t.Error("expected a rebirth request to have arrived but got none")
-	}
 }
 
 func TestRequestsRebirthWhenReceivingUnknownAlias(t *testing.T) {
@@ -276,21 +241,7 @@ func TestRequestsRebirthWhenReceivingUnknownAlias(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	receivedRebirthRequest := false
-
 	testFn := func(client mqtt.Client) {
-		client.Subscribe("spBv1.0/test-group/NCMD/test-node", byte(0), func(_ mqtt.Client, message mqtt.Message) {
-			var payload protobuf.Payload
-			_ = proto.Unmarshal(message.Payload(), &payload)
-
-			for _, metric := range payload.Metrics {
-				if metric.GetName() == "Node Control/Rebirth" {
-					receivedRebirthRequest = metric.GetBooleanValue()
-					return
-				}
-			}
-		})
-
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("foo"),
@@ -300,24 +251,18 @@ func TestRequestsRebirthWhenReceivingUnknownAlias(t *testing.T) {
 			},
 		})
 
-		nDataPayload := &protobuf.Payload{
-			Metrics: []*protobuf.Payload_Metric{
-				{
-					Alias:    proto.Uint64(99),
-					Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
-					Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
-				},
+		publishNodeData(client, []*protobuf.Payload_Metric{
+			{
+				Alias:    proto.Uint64(99),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		}
-		protoPayload, _ := proto.Marshal(nDataPayload)
-		client.Publish("spBv1.0/test-group/NDATA/test-node", byte(0), false, protoPayload)
+		})
+
+		waitForRebirthRequest(t, client)
 	}
 
 	runAndCollectAllMetrics(ctx, t, testFn)
-
-	if !receivedRebirthRequest {
-		t.Error("expected a rebirth request to have arrived but got none")
-	}
 }
 
 func TestRequestsRebirthWhenReceivingUnknownMetric(t *testing.T) {
@@ -326,21 +271,7 @@ func TestRequestsRebirthWhenReceivingUnknownMetric(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	receivedRebirthRequest := false
-
 	testFn := func(client mqtt.Client) {
-		client.Subscribe("spBv1.0/test-group/NCMD/test-node", byte(0), func(_ mqtt.Client, message mqtt.Message) {
-			var payload protobuf.Payload
-			_ = proto.Unmarshal(message.Payload(), &payload)
-
-			for _, metric := range payload.Metrics {
-				if metric.GetName() == "Node Control/Rebirth" {
-					receivedRebirthRequest = metric.GetBooleanValue()
-					return
-				}
-			}
-		})
-
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("foo"),
@@ -349,24 +280,380 @@ func TestRequestsRebirthWhenReceivingUnknownMetric(t *testing.T) {
 			},
 		})
 
-		nDataPayload := &protobuf.Payload{
-			Metrics: []*protobuf.Payload_Metric{
-				{
-					Name:     proto.String("bar"),
-					Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
-					Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
-				},
+		publishNodeData(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("bar"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		}
-		protoPayload, _ := proto.Marshal(nDataPayload)
-		client.Publish("spBv1.0/test-group/NDATA/test-node", byte(0), false, protoPayload)
+		})
+
+		waitForRebirthRequest(t, client)
 	}
 
 	runAndCollectAllMetrics(ctx, t, testFn)
+}
 
-	if !receivedRebirthRequest {
-		t.Error("expected a rebirth request to have arrived but got none")
+func TestRequestsRebirthWhenReceivingDuplicatedAlias(t *testing.T) {
+	checkIntegrationTestEnvVar(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	testFn := func(client mqtt.Client) {
+		publishNodeBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Alias:    proto.Uint64(15),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+			{
+				Name:     proto.String("bar"),
+				Alias:    proto.Uint64(15),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+
+		waitForRebirthRequest(t, client)
 	}
+
+	runAndCollectAllMetrics(ctx, t, testFn)
+}
+
+func TestHandlesMetricsOnDeviceBirth(t *testing.T) {
+	checkIntegrationTestEnvVar(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	testFn := func(client mqtt.Client) {
+		publishNodeBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("device-metric"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+	}
+
+	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+
+	deviceMetric := receivedMetrics["device-metric"]
+
+	if len(deviceMetric) != 1 {
+		t.Errorf("received %d metrics on device birth but expected 1", len(receivedMetrics))
+	}
+
+	if got := deviceMetric[0].EdgeNodeDescriptor.GroupID; got != "test-group" {
+		t.Errorf("got device metric with Group %s but expected test-group", got)
+	}
+	if got := deviceMetric[0].EdgeNodeDescriptor.EdgeNodeID; got != "test-node" {
+		t.Errorf("got metric with Edge Node ID %s but expected test-node", got)
+	}
+	if got := deviceMetric[0].DeviceID; got != "test-device" {
+		t.Errorf("got metric with Device ID %s but expected test-device", got)
+	}
+}
+
+func TestHandlesMetricsOnDeviceDeath(t *testing.T) {
+	checkIntegrationTestEnvVar(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	testFn := func(client mqtt.Client) {
+		publishNodeBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("device-metric"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceDeath(client)
+	}
+
+	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+
+	deviceMetric := receivedMetrics["device-metric"]
+	if len(deviceMetric) != 2 {
+		t.Errorf("received %d metrics on device death but expected 2", len(receivedMetrics))
+	}
+
+	if got := deviceMetric[0].Quality; got != sparkplughost.MetricQualityGood {
+		t.Errorf("got metric with Quality %s but expected GOOD", got)
+	}
+	if got := deviceMetric[1].Quality; got != sparkplughost.MetricQualityStale {
+		t.Errorf("got metric with Quality %s but expected STALE", got)
+	}
+}
+
+func TestDeviceMetricsAreSetToStaleWhenEdgeNodeGoesOffline(t *testing.T) {
+	checkIntegrationTestEnvVar(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	testFn := func(client mqtt.Client) {
+		publishNodeBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("device-metric"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+
+		publishNodeDeath(client)
+	}
+
+	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+
+	deviceMetric := receivedMetrics["device-metric"]
+	if len(deviceMetric) != 2 {
+		t.Errorf("received %d metrics on device death but expected 2", len(receivedMetrics))
+	}
+
+	if got := deviceMetric[0].Quality; got != sparkplughost.MetricQualityGood {
+		t.Errorf("got metric with Quality %s but expected GOOD", got)
+	}
+	if got := deviceMetric[1].Quality; got != sparkplughost.MetricQualityStale {
+		t.Errorf("got metric with Quality %s but expected STALE", got)
+	}
+}
+
+func TestHandlesMetricsOnDeviceData(t *testing.T) {
+	checkIntegrationTestEnvVar(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	testFn := func(client mqtt.Client) {
+		publishNodeBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("device-metric"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceData(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("device-metric"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
+			},
+		})
+	}
+
+	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+
+	deviceMetric := receivedMetrics["device-metric"]
+
+	if len(deviceMetric) != 2 {
+		t.Errorf("received %d metrics on device birth but expected 1", len(receivedMetrics))
+	}
+
+	if got := deviceMetric[0].Metric.GetLongValue(); got != 1 {
+		t.Errorf("got metric with value %d but expected 1", got)
+	}
+	if got := deviceMetric[1].Metric.GetLongValue(); got != 99 {
+		t.Errorf("got metric with value %d but expected 99", got)
+	}
+}
+
+func TestHandlesMetricsWithAliasOnDeviceData(t *testing.T) {
+	checkIntegrationTestEnvVar(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	testFn := func(client mqtt.Client) {
+		publishNodeBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("device-metric"),
+				Alias:    proto.Uint64(11),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceData(client, []*protobuf.Payload_Metric{
+			{
+				Alias:    proto.Uint64(11),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
+			},
+		})
+	}
+
+	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+
+	deviceMetric := receivedMetrics["device-metric"]
+
+	if len(deviceMetric) != 2 {
+		t.Errorf("received %d metrics on device birth but expected 1", len(receivedMetrics))
+	}
+
+	if got := deviceMetric[0].Metric.GetLongValue(); got != 1 {
+		t.Errorf("got metric with value %d but expected 1", got)
+	}
+	if got := deviceMetric[1].Metric.GetLongValue(); got != 99 {
+		t.Errorf("got metric with value %d but expected 99", got)
+	}
+}
+
+func TestRequestsRebirthWhenReceivingDeviceBirthWithoutPreviousNodeBirth(t *testing.T) {
+	checkIntegrationTestEnvVar(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	testFn := func(client mqtt.Client) {
+		publishDeviceBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("device-metric"),
+				Alias:    proto.Uint64(11),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+
+		waitForRebirthRequest(t, client)
+	}
+
+	runAndCollectAllMetrics(ctx, t, testFn)
+}
+
+func TestRequestsRebirthWhenReceivingDeviceDataWithoutPreviousDeviceBirth(t *testing.T) {
+	checkIntegrationTestEnvVar(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	testFn := func(client mqtt.Client) {
+		publishNodeBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceData(client, []*protobuf.Payload_Metric{
+			{
+				Alias:    proto.Uint64(11),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
+			},
+		})
+
+		waitForRebirthRequest(t, client)
+	}
+
+	runAndCollectAllMetrics(ctx, t, testFn)
+}
+
+func TestRequestsRebirthOnDuplicatedDeviceMetricAlias(t *testing.T) {
+	checkIntegrationTestEnvVar(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	testFn := func(client mqtt.Client) {
+		publishNodeBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("device-metric"),
+				Alias:    proto.Uint64(11),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+			{
+				Name:     proto.String("device-metric-2"),
+				Alias:    proto.Uint64(11),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+
+		waitForRebirthRequest(t, client)
+	}
+
+	runAndCollectAllMetrics(ctx, t, testFn)
+}
+
+func TestRequestsRebirthOnDeviceUnknownAlias(t *testing.T) {
+	checkIntegrationTestEnvVar(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	testFn := func(client mqtt.Client) {
+		publishNodeBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("device-metric"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		})
+		publishDeviceData(client, []*protobuf.Payload_Metric{
+			{
+				Alias:    proto.Uint64(11),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
+			},
+		})
+
+		waitForRebirthRequest(t, client)
+	}
+
+	runAndCollectAllMetrics(ctx, t, testFn)
 }
 
 func publishNodeBirth(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric) {
@@ -390,6 +677,64 @@ func publishNodeBirth(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric
 	token.Wait()
 }
 
+func publishNodeDeath(mqttClient mqtt.Client) {
+	deadPayload := &protobuf.Payload{
+		Metrics: []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("bdSeq"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 0},
+			},
+		},
+	}
+	protoPayload, _ := proto.Marshal(deadPayload)
+	mqttClient.Publish("spBv1.0/test-group/NDEATH/test-node", byte(0), false, protoPayload)
+}
+
+func publishNodeData(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric) {
+	dataPayload := &protobuf.Payload{
+		Timestamp: proto.Uint64(uint64(time.Now().UnixMilli())),
+		Metrics:   metrics,
+		Seq:       proto.Uint64(0),
+	}
+	protoPayload, _ := proto.Marshal(dataPayload)
+
+	token := mqttClient.Publish("spBv1.0/test-group/NDATA/test-node", byte(0), false, protoPayload)
+	token.Wait()
+}
+
+func publishDeviceBirth(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric) {
+	birthPayload := &protobuf.Payload{
+		Timestamp: proto.Uint64(uint64(time.Now().UnixMilli())),
+		Metrics:   metrics,
+		Seq:       proto.Uint64(1),
+	}
+	protoPayload, _ := proto.Marshal(birthPayload)
+
+	token := mqttClient.Publish("spBv1.0/test-group/DBIRTH/test-node/test-device", byte(0), false, protoPayload)
+	token.Wait()
+}
+
+func publishDeviceDeath(mqttClient mqtt.Client) {
+	deadPayload := &protobuf.Payload{
+		Seq: proto.Uint64(2),
+	}
+	protoPayload, _ := proto.Marshal(deadPayload)
+	mqttClient.Publish("spBv1.0/test-group/DDEATH/test-node/test-device", byte(0), false, protoPayload)
+}
+
+func publishDeviceData(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric) {
+	dataPayload := &protobuf.Payload{
+		Timestamp: proto.Uint64(uint64(time.Now().UnixMilli())),
+		Metrics:   metrics,
+		Seq:       proto.Uint64(0),
+	}
+	protoPayload, _ := proto.Marshal(dataPayload)
+
+	token := mqttClient.Publish("spBv1.0/test-group/DDATA/test-node/test-device", byte(0), false, protoPayload)
+	token.Wait()
+}
+
 // helper func to run a new Host instance in the background, collecting all metrics that arrive until ctx
 // is cancelled.
 // The testFn parameter takes a mqtt client so that each test can simulate the flow of expected messages from an
@@ -407,7 +752,12 @@ func runAndCollectAllMetrics(ctx context.Context, t *testing.T, testFn func(mqtt
 		receivedMetrics[metric.Metric.GetName()] = append(receivedMetrics[metric.Metric.GetName()], metric)
 	}
 
-	host := sparkplughost.NewHostApplication(testBrokerURL(), hostID, sparkplughost.WithMetricHandler(metricHandler))
+	host := sparkplughost.NewHostApplication(
+		testBrokerURL(),
+		hostID,
+		sparkplughost.WithMetricHandler(metricHandler),
+		sparkplughost.WithLogger(logger),
+	)
 
 	wg.Add(1)
 	go func() {
@@ -481,5 +831,31 @@ func waitForHostStatus(t *testing.T, mqttClient mqtt.Client, hostID string, onli
 		return
 	case <-time.NewTicker(5 * time.Second).C:
 		t.Fatalf("timed-out waiting for death certificate")
+	}
+}
+
+func waitForRebirthRequest(t *testing.T, mqttClient mqtt.Client) {
+	rebirthChan := make(chan struct{}, 1)
+
+	token := mqttClient.Subscribe("spBv1.0/test-group/NCMD/test-node", byte(0), func(_ mqtt.Client, message mqtt.Message) {
+		var payload protobuf.Payload
+		_ = proto.Unmarshal(message.Payload(), &payload)
+
+		for _, metric := range payload.Metrics {
+			if metric.GetName() == "Node Control/Rebirth" && metric.GetBooleanValue() {
+				rebirthChan <- struct{}{}
+				return
+			}
+		}
+	})
+	if token.Wait() && token.Error() != nil {
+		t.Fatal(token.Error())
+	}
+
+	select {
+	case <-rebirthChan:
+		return
+	case <-time.NewTicker(1 * time.Second).C:
+		t.Fatalf("timed-out waiting for rebirth request")
 	}
 }

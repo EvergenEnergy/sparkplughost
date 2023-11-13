@@ -94,21 +94,43 @@ func (h *HostApplication) onConnect(client mqtt.Client) {
 	if token := client.Subscribe(hostStateTopic, byte(1), h.stateHandler); token.Wait() && token.Error() != nil {
 		h.logger.Error(
 			"error subscribing to STATE topic",
-			"topic",
-			hostStateTopic,
-			"error",
-			token.Error().Error(),
+			"topic", hostStateTopic,
+			"error", token.Error().Error(),
 		)
+	}
+
+	msgTypes := []messageType{
+		messageTypeNBIRTH,
+		messageTypeNDATA,
+		messageTypeNDEATH,
+		messageTypeDBIRTH,
+		messageTypeDDEATH,
+		messageTypeDDATA,
+	}
+
+	for _, msgType := range msgTypes {
+		var topic string
+
+		if msgType.isEdgeNodeMessage() {
+			topic = fmt.Sprintf("%s/+/%s/+", sparkplugbNamespace, msgType)
+		} else {
+			topic = fmt.Sprintf("%s/+/%s/+/+", sparkplugbNamespace, msgType)
+		}
+
+		token := client.Subscribe(topic, byte(0), h.msgHandler)
+		if token.Wait() && token.Error() != nil {
+			h.logger.Error(
+				"error subscribing to topic",
+				"topic", topic,
+				"error", token.Error().Error(),
+			)
+		}
 	}
 
 	// The Sparkplug Host Application MUST publish a
 	// Sparkplug Host Application BIRTH message to the MQTT Server immediately after
 	// successfully subscribing its own spBv1.0/STATE/sparkplug_host_id topic.
 	h.publishOnlineStatus(true, h.lastWillMessageTimestamp)
-
-	client.Subscribe(fmt.Sprintf("%s/+/NBIRTH/+", sparkplugbNamespace), byte(0), h.msgHandler)
-	client.Subscribe(fmt.Sprintf("%s/+/NDEATH/+", sparkplugbNamespace), byte(1), h.msgHandler)
-	client.Subscribe(fmt.Sprintf("%s/+/NDATA/+", sparkplugbNamespace), byte(0), h.msgHandler)
 }
 
 func (h *HostApplication) onReconnect(_ mqtt.Client, options *mqtt.ClientOptions) {

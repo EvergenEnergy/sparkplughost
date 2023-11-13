@@ -39,3 +39,9 @@ func WithMetricHandler(metricHandler MetricHandler) Option {
 		c.metricHandler = metricHandler
 	}
 }
+
+func WithLogger(logger *slog.Logger) Option {
+	return func(c *config) {
+		c.logger = logger
+	}
+}
