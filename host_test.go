@@ -152,7 +152,7 @@ func TestHandlesMetricsOnNodeData(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		})
+		}, 1)
 	}
 
 	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
@@ -194,7 +194,7 @@ func TestHandlesMetricsWithAliasOnNodeData(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		})
+		}, 1)
 	}
 
 	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
@@ -227,7 +227,7 @@ func TestRequestsRebirthWhenReceivingDataWithoutPreviousBirth(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		})
+		}, 0)
 
 		waitForRebirthRequest(t, client)
 	}
@@ -257,7 +257,7 @@ func TestRequestsRebirthWhenReceivingUnknownAlias(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		})
+		}, 1)
 
 		waitForRebirthRequest(t, client)
 	}
@@ -286,7 +286,7 @@ func TestRequestsRebirthWhenReceivingUnknownMetric(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		})
+		}, 1)
 
 		waitForRebirthRequest(t, client)
 	}
@@ -342,7 +342,7 @@ func TestHandlesMetricsOnDeviceBirth(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
 			},
-		})
+		}, 1)
 	}
 
 	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
@@ -384,7 +384,7 @@ func TestHandlesMetricsOnDeviceDeath(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
 			},
-		})
+		}, 1)
 		publishDeviceDeath(client)
 	}
 
@@ -423,7 +423,7 @@ func TestDeviceMetricsAreSetToStaleWhenEdgeNodeGoesOffline(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
 			},
-		})
+		}, 1)
 
 		publishNodeDeath(client)
 	}
@@ -463,14 +463,14 @@ func TestHandlesMetricsOnDeviceData(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
 			},
-		})
+		}, 1)
 		publishDeviceData(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("device-metric"),
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		})
+		}, 2)
 	}
 
 	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
@@ -510,14 +510,14 @@ func TestHandlesMetricsWithAliasOnDeviceData(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
 			},
-		})
+		}, 1)
 		publishDeviceData(client, []*protobuf.Payload_Metric{
 			{
 				Alias:    proto.Uint64(11),
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		})
+		}, 2)
 	}
 
 	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
@@ -550,7 +550,7 @@ func TestRequestsRebirthWhenReceivingDeviceBirthWithoutPreviousNodeBirth(t *test
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
 			},
-		})
+		}, 0)
 
 		waitForRebirthRequest(t, client)
 	}
@@ -578,7 +578,7 @@ func TestRequestsRebirthWhenReceivingDeviceDataWithoutPreviousDeviceBirth(t *tes
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
-		})
+		}, 1)
 
 		waitForRebirthRequest(t, client)
 	}
@@ -613,7 +613,7 @@ func TestRequestsRebirthOnDuplicatedDeviceMetricAlias(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
 			},
-		})
+		}, 1)
 
 		waitForRebirthRequest(t, client)
 	}
@@ -641,14 +641,49 @@ func TestRequestsRebirthOnDeviceUnknownAlias(t *testing.T) {
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
 			},
-		})
+		}, 1)
 		publishDeviceData(client, []*protobuf.Payload_Metric{
 			{
 				Alias:    proto.Uint64(11),
 				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
 				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
 			},
+		}, 2)
+
+		waitForRebirthRequest(t, client)
+	}
+
+	runAndCollectAllMetrics(ctx, t, testFn)
+}
+
+func TestRequestsRebirthOnReorderTimeoutExpiration(t *testing.T) {
+	checkIntegrationTestEnvVar(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	testFn := func(client mqtt.Client) {
+		publishNodeBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("foo"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
 		})
+		publishDeviceBirth(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("device-metric"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 1},
+			},
+		}, 1)
+		publishDeviceData(client, []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("device-metric"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 99},
+			},
+		}, 3)
 
 		waitForRebirthRequest(t, client)
 	}
@@ -691,11 +726,11 @@ func publishNodeDeath(mqttClient mqtt.Client) {
 	mqttClient.Publish("spBv1.0/test-group/NDEATH/test-node", byte(0), false, protoPayload)
 }
 
-func publishNodeData(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric) {
+func publishNodeData(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric, seq uint64) {
 	dataPayload := &protobuf.Payload{
 		Timestamp: proto.Uint64(uint64(time.Now().UnixMilli())),
 		Metrics:   metrics,
-		Seq:       proto.Uint64(0),
+		Seq:       proto.Uint64(seq),
 	}
 	protoPayload, _ := proto.Marshal(dataPayload)
 
@@ -703,11 +738,11 @@ func publishNodeData(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric)
 	token.Wait()
 }
 
-func publishDeviceBirth(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric) {
+func publishDeviceBirth(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric, seq uint64) {
 	birthPayload := &protobuf.Payload{
 		Timestamp: proto.Uint64(uint64(time.Now().UnixMilli())),
 		Metrics:   metrics,
-		Seq:       proto.Uint64(1),
+		Seq:       proto.Uint64(seq),
 	}
 	protoPayload, _ := proto.Marshal(birthPayload)
 
@@ -723,11 +758,11 @@ func publishDeviceDeath(mqttClient mqtt.Client) {
 	mqttClient.Publish("spBv1.0/test-group/DDEATH/test-node/test-device", byte(0), false, protoPayload)
 }
 
-func publishDeviceData(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric) {
+func publishDeviceData(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric, seq uint64) {
 	dataPayload := &protobuf.Payload{
 		Timestamp: proto.Uint64(uint64(time.Now().UnixMilli())),
 		Metrics:   metrics,
-		Seq:       proto.Uint64(0),
+		Seq:       proto.Uint64(seq),
 	}
 	protoPayload, _ := proto.Marshal(dataPayload)
 
@@ -757,6 +792,7 @@ func runAndCollectAllMetrics(ctx context.Context, t *testing.T, testFn func(mqtt
 		hostID,
 		sparkplughost.WithMetricHandler(metricHandler),
 		sparkplughost.WithLogger(logger),
+		sparkplughost.WithReorderTimeout(100*time.Millisecond),
 	)
 
 	wg.Add(1)

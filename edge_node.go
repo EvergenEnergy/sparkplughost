@@ -19,6 +19,10 @@ type EdgeNodeDescriptor struct {
 	EdgeNodeID string
 }
 
+func (e EdgeNodeDescriptor) String() string {
+	return fmt.Sprintf("%s/%s", e.GroupID, e.EdgeNodeID)
+}
+
 type edgeNode struct {
 	descriptor          EdgeNodeDescriptor
 	online              bool
@@ -26,7 +30,6 @@ type edgeNode struct {
 	lastOfflineAt       time.Time
 	birthSequenceNumber int64
 	devices             map[string]device
-	lastSequenceNumber  int64
 }
 
 type device struct {
@@ -41,20 +44,20 @@ type edgeNodeManager struct {
 	nodes            map[EdgeNodeDescriptor]edgeNode
 	metrics          map[EdgeNodeDescriptor]*edgeNodeMetrics
 	metricHandler    MetricHandler
-	commandPublisher *commandPublisher
+	rebirthRequester rebirthRequester
 	logger           *slog.Logger
 }
 
 func newEdgeNodeManager(
 	metricHandler MetricHandler,
-	commandPublisher *commandPublisher,
+	commandPublisher rebirthRequester,
 	logger *slog.Logger,
 ) *edgeNodeManager {
 	return &edgeNodeManager{
 		nodes:            make(map[EdgeNodeDescriptor]edgeNode),
 		metrics:          make(map[EdgeNodeDescriptor]*edgeNodeMetrics),
 		metricHandler:    metricHandler,
-		commandPublisher: commandPublisher,
+		rebirthRequester: commandPublisher,
 		logger:           logger,
 	}
 }
@@ -113,7 +116,7 @@ func (m *edgeNodeManager) edgeNodeOnline(edgeNodeDescriptor EdgeNodeDescriptor, 
 	err = metrics.addNodeBirthMetrics(payload.GetMetrics())
 	if err != nil {
 		if errors.Is(err, errOutOfSync) {
-			return m.commandPublisher.requestRebirth(edgeNodeDescriptor)
+			return m.rebirthRequester.requestRebirth(edgeNodeDescriptor)
 		}
 
 		return err
@@ -124,7 +127,6 @@ func (m *edgeNodeManager) edgeNodeOnline(edgeNodeDescriptor EdgeNodeDescriptor, 
 		online:              true,
 		lastOnlineAt:        time.UnixMilli(int64(payload.GetTimestamp())),
 		birthSequenceNumber: bdSeq,
-		lastSequenceNumber:  0,
 		devices:             make(map[string]device),
 	}
 
@@ -144,18 +146,18 @@ func (m *edgeNodeManager) deviceOnline(edgeNodeDescriptor EdgeNodeDescriptor, de
 
 	node, found := m.nodes[edgeNodeDescriptor]
 	if !found || !node.online {
-		return m.commandPublisher.requestRebirth(edgeNodeDescriptor)
+		return m.rebirthRequester.requestRebirth(edgeNodeDescriptor)
 	}
 
 	nodeMetrics, found := m.metrics[edgeNodeDescriptor]
 	if !found {
-		return m.commandPublisher.requestRebirth(edgeNodeDescriptor)
+		return m.rebirthRequester.requestRebirth(edgeNodeDescriptor)
 	}
 
 	err := nodeMetrics.addDeviceBirthMetrics(deviceID, payload.GetMetrics())
 	if err != nil {
 		if errors.Is(err, errOutOfSync) {
-			return m.commandPublisher.requestRebirth(edgeNodeDescriptor)
+			return m.rebirthRequester.requestRebirth(edgeNodeDescriptor)
 		}
 
 		return err
@@ -276,18 +278,18 @@ func (m *edgeNodeManager) edgeNodeData(descriptor EdgeNodeDescriptor, newDataMet
 
 	node, found := m.nodes[descriptor]
 	if !found || !node.online {
-		return m.commandPublisher.requestRebirth(descriptor)
+		return m.rebirthRequester.requestRebirth(descriptor)
 	}
 
 	metrics, found := m.metrics[descriptor]
 	if !found {
-		return m.commandPublisher.requestRebirth(descriptor)
+		return m.rebirthRequester.requestRebirth(descriptor)
 	}
 
 	err := metrics.addNodeMetrics(newDataMetrics)
 	if err != nil {
 		if errors.Is(err, errOutOfSync) {
-			return m.commandPublisher.requestRebirth(descriptor)
+			return m.rebirthRequester.requestRebirth(descriptor)
 		}
 
 		return err
@@ -306,23 +308,23 @@ func (m *edgeNodeManager) deviceData(descriptor EdgeNodeDescriptor, deviceID str
 
 	node, found := m.nodes[descriptor]
 	if !found || !node.online {
-		return m.commandPublisher.requestRebirth(descriptor)
+		return m.rebirthRequester.requestRebirth(descriptor)
 	}
 
 	device, found := node.devices[deviceID]
 	if !found || !device.online {
-		return m.commandPublisher.requestRebirth(descriptor)
+		return m.rebirthRequester.requestRebirth(descriptor)
 	}
 
 	metrics, found := m.metrics[descriptor]
 	if !found {
-		return m.commandPublisher.requestRebirth(descriptor)
+		return m.rebirthRequester.requestRebirth(descriptor)
 	}
 
 	err := metrics.addDeviceMetrics(deviceID, newDataMetrics)
 	if err != nil {
 		if errors.Is(err, errOutOfSync) {
-			return m.commandPublisher.requestRebirth(descriptor)
+			return m.rebirthRequester.requestRebirth(descriptor)
 		}
 
 		return err
