@@ -19,6 +19,7 @@ type config struct {
 	logger            *slog.Logger
 	metricHandler     MetricHandler
 	disconnectTimeout time.Duration
+	reorderTimeout    time.Duration
 }
 
 // Option allows clients to configure the Host Application.
@@ -29,6 +30,7 @@ func defaultConfig() *config {
 		logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
 		metricHandler:     defaultMetricHandler,
 		disconnectTimeout: 5 * time.Second,
+		reorderTimeout:    5 * time.Second,
 	}
 }
 
@@ -43,5 +45,11 @@ func WithMetricHandler(metricHandler MetricHandler) Option {
 func WithLogger(logger *slog.Logger) Option {
 	return func(c *config) {
 		c.logger = logger
+	}
+}
+
+func WithReorderTimeout(timeout time.Duration) Option {
+	return func(c *config) {
+		c.reorderTimeout = timeout
 	}
 }

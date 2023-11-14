@@ -12,6 +12,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type messageProcessor interface {
+	processMessage(msg sparkplugMessage)
+}
+
 type HostApplication struct {
 	mqttClient               mqtt.Client
 	hostID                   string
@@ -19,8 +23,9 @@ type HostApplication struct {
 	lastWillMessageTimestamp time.Time
 	logger                   *slog.Logger
 	metricHandler            MetricHandler
-	edgeNodeManager          *edgeNodeManager
+	messageProcessor         messageProcessor
 	disconnectTimeout        time.Duration
+	reorderTimeout           time.Duration
 }
 
 func NewHostApplication(brokerURL, hostID string, opts ...Option) *HostApplication {
@@ -35,6 +40,7 @@ func NewHostApplication(brokerURL, hostID string, opts ...Option) *HostApplicati
 		logger:            cfg.logger,
 		metricHandler:     cfg.metricHandler,
 		disconnectTimeout: cfg.disconnectTimeout,
+		reorderTimeout:    cfg.reorderTimeout,
 	}
 }
 
@@ -81,7 +87,12 @@ func (h *HostApplication) initClient() {
 	h.setLastWill(mqttOpts)
 
 	h.mqttClient = mqtt.NewClient(mqttOpts)
-	h.edgeNodeManager = newEdgeNodeManager(h.metricHandler, newCommandPublisher(h.mqttClient), h.logger)
+	commandPublisher := newCommandPublisher(h.mqttClient)
+
+	h.messageProcessor = newEdgeNodeManager(h.metricHandler, commandPublisher, h.logger)
+	if h.reorderTimeout > 0 {
+		h.messageProcessor = newInOrderProcessor(h.reorderTimeout, h.messageProcessor, commandPublisher)
+	}
 }
 
 func (h *HostApplication) stateTopic() string {
@@ -193,7 +204,7 @@ func (h *HostApplication) msgHandler(_ mqtt.Client, message mqtt.Message) {
 		return
 	}
 
-	h.edgeNodeManager.processMessage(sparkplugMsg)
+	h.messageProcessor.processMessage(sparkplugMsg)
 }
 
 type sparkplugMessage struct {
