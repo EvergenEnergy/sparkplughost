@@ -3,6 +3,7 @@ package sparkplughost
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -18,7 +19,7 @@ type messageProcessor interface {
 
 type HostApplication struct {
 	mqttClients               map[string]mqtt.Client
-	brokerURLs                []string
+	brokers                   []MqttBrokerConfig
 	lastWillMessageTimestamps map[string]time.Time
 	hostID                    string
 	logger                    *slog.Logger
@@ -29,28 +30,38 @@ type HostApplication struct {
 	commandPublisher          *commandPublisher
 }
 
-func NewHostApplication(brokerURLs []string, hostID string, opts ...Option) *HostApplication {
+func NewHostApplication(brokerConfigs []MqttBrokerConfig, hostID string, opts ...Option) (*HostApplication, error) {
 	cfg := defaultConfig()
 	for _, opt := range opts {
 		opt(cfg)
 	}
 
+	if len(brokerConfigs) == 0 {
+		return nil, errors.New("at least 1 MQTT Broker config needs to be provided")
+	}
+
+	for _, brokerConfig := range brokerConfigs {
+		if len(brokerConfig.BrokerURL) == 0 {
+			return nil, errors.New("broker URL is required")
+		}
+	}
+
 	return &HostApplication{
 		hostID:                    hostID,
-		brokerURLs:                brokerURLs,
+		brokers:                   brokerConfigs,
 		logger:                    cfg.logger,
 		metricHandler:             cfg.metricHandler,
 		disconnectTimeout:         cfg.disconnectTimeout,
 		reorderTimeout:            cfg.reorderTimeout,
-		mqttClients:               make(map[string]mqtt.Client, len(brokerURLs)),
-		lastWillMessageTimestamps: make(map[string]time.Time, len(brokerURLs)),
-	}
+		mqttClients:               make(map[string]mqtt.Client, len(brokerConfigs)),
+		lastWillMessageTimestamps: make(map[string]time.Time, len(brokerConfigs)),
+	}, nil
 }
 
 // Run will connect to the mqtt broker and block until
 // ctx is canceled.
 func (h *HostApplication) Run(ctx context.Context) error {
-	h.initClients(h.brokerURLs)
+	h.initClients()
 
 	for brokerURL, client := range h.mqttClients {
 		h.logger.Info("Connecting to MQTT Broker", "broker_url", brokerURL)
@@ -95,8 +106,10 @@ func (h *HostApplication) SendDeviceCommand(descriptor EdgeNodeDescriptor, devic
 	return h.commandPublisher.writeDeviceMetrics(descriptor, deviceID, metrics)
 }
 
-func (h *HostApplication) initClients(brokerURLs []string) {
-	for _, brokerURL := range brokerURLs {
+func (h *HostApplication) initClients() {
+	for _, brokerConfig := range h.brokers {
+		brokerURL := brokerConfig.BrokerURL
+
 		client, found := h.mqttClients[brokerURL]
 		if found && client.IsConnected() {
 			client.Disconnect(uint(h.disconnectTimeout.Milliseconds()))
@@ -111,6 +124,16 @@ func (h *HostApplication) initClients(brokerURLs []string) {
 		mqttOpts.SetOnConnectHandler(h.onConnect(brokerURL))
 		mqttOpts.SetReconnectingHandler(h.onReconnect(brokerURL))
 		mqttOpts.SetDefaultPublishHandler(func(_ mqtt.Client, message mqtt.Message) {})
+
+		if len(brokerConfig.Username) > 0 {
+			mqttOpts.SetUsername(brokerConfig.Username)
+		}
+		if len(brokerConfig.Password) > 0 {
+			mqttOpts.SetPassword(brokerConfig.Password)
+		}
+		if brokerConfig.TLSConfig != nil {
+			mqttOpts.SetTLSConfig(brokerConfig.TLSConfig)
+		}
 
 		h.setLastWill(brokerURL, mqttOpts)
 
