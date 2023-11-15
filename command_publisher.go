@@ -15,11 +15,11 @@ const (
 )
 
 type commandPublisher struct {
-	mqttClient mqtt.Client
+	mqttClients map[string]mqtt.Client
 }
 
-func newCommandPublisher(mqttClient mqtt.Client) *commandPublisher {
-	return &commandPublisher{mqttClient: mqttClient}
+func newCommandPublisher(mqttClients map[string]mqtt.Client) *commandPublisher {
+	return &commandPublisher{mqttClients: mqttClients}
 }
 
 func (c *commandPublisher) requestNodeRebirth(descriptor EdgeNodeDescriptor) error {
@@ -65,8 +65,10 @@ func (c *commandPublisher) publish(topic string, metrics []*protobuf.Payload_Met
 		return err
 	}
 
-	if t := c.mqttClient.Publish(topic, byte(0), false, bytes); t.Wait() && t.Error() != nil {
-		return err
+	for _, client := range c.mqttClients {
+		if t := client.Publish(topic, byte(0), false, bytes); t.Wait() && t.Error() != nil {
+			return err
+		}
 	}
 
 	return nil

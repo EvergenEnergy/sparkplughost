@@ -26,7 +26,7 @@ func TestHostConnectsAndSendsBirthCertificate(t *testing.T) {
 	defer cancel()
 
 	hostID := fmt.Sprintf("test-host-%d", rand.Int())
-	host := sparkplughost.NewHostApplication(testBrokerURL(), hostID)
+	host := sparkplughost.NewHostApplication([]string{testBrokerURL()}, hostID)
 
 	go func() {
 		err := host.Run(ctx)
@@ -48,7 +48,7 @@ func TestHostPublishesDeathCertificateWhenStoppingGracefully(t *testing.T) {
 	defer cancel()
 
 	hostID := fmt.Sprintf("test-host-%d", rand.Int())
-	host := sparkplughost.NewHostApplication(testBrokerURL(), hostID)
+	host := sparkplughost.NewHostApplication([]string{testBrokerURL()}, hostID)
 
 	go func() {
 		err := host.Run(ctx)
@@ -737,7 +737,7 @@ func runAndCollectAllMetrics(t *testing.T, testFn func(mqtt.Client)) map[string]
 	}
 
 	host := sparkplughost.NewHostApplication(
-		testBrokerURL(),
+		[]string{testBrokerURL()},
 		hostID,
 		sparkplughost.WithMetricHandler(metricHandler),
 		sparkplughost.WithLogger(logger),
