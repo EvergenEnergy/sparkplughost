@@ -448,7 +448,7 @@ func newMockRebirther() *mockRebirther {
 	return &mockRebirther{rebirthsPerNode: make(map[EdgeNodeDescriptor]int)}
 }
 
-func (m *mockRebirther) requestRebirth(descriptor EdgeNodeDescriptor) error {
+func (m *mockRebirther) requestNodeRebirth(descriptor EdgeNodeDescriptor) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

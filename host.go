@@ -26,6 +26,7 @@ type HostApplication struct {
 	messageProcessor         messageProcessor
 	disconnectTimeout        time.Duration
 	reorderTimeout           time.Duration
+	commandPublisher         *commandPublisher
 }
 
 func NewHostApplication(brokerURL, hostID string, opts ...Option) *HostApplication {
@@ -71,6 +72,22 @@ func (h *HostApplication) Run(ctx context.Context) error {
 	return nil
 }
 
+func (h *HostApplication) SendEdgeNodeRebirthRequest(descriptor EdgeNodeDescriptor) error {
+	return h.commandPublisher.requestNodeRebirth(descriptor)
+}
+
+func (h *HostApplication) SendDeviceRebirthRequest(descriptor EdgeNodeDescriptor, deviceID string) error {
+	return h.commandPublisher.requestDeviceRebirth(descriptor, deviceID)
+}
+
+func (h *HostApplication) SendEdgeNodeCommand(descriptor EdgeNodeDescriptor, metrics []*protobuf.Payload_Metric) error {
+	return h.commandPublisher.writeEdgeNodeMetrics(descriptor, metrics)
+}
+
+func (h *HostApplication) SendDeviceCommand(descriptor EdgeNodeDescriptor, deviceID string, metrics []*protobuf.Payload_Metric) error {
+	return h.commandPublisher.writeDeviceMetrics(descriptor, deviceID, metrics)
+}
+
 func (h *HostApplication) initClient() {
 	mqttOpts := mqtt.NewClientOptions()
 	mqttOpts.AddBroker(h.brokerURL)
@@ -80,9 +97,7 @@ func (h *HostApplication) initClient() {
 	mqttOpts.SetOrderMatters(true)
 	mqttOpts.SetOnConnectHandler(h.onConnect)
 	mqttOpts.SetReconnectingHandler(h.onReconnect)
-	mqttOpts.SetDefaultPublishHandler(func(_ mqtt.Client, message mqtt.Message) {
-		h.logger.Info("received unexpected message", "topic", message.Topic())
-	})
+	mqttOpts.SetDefaultPublishHandler(func(_ mqtt.Client, message mqtt.Message) {})
 
 	h.setLastWill(mqttOpts)
 
@@ -93,6 +108,8 @@ func (h *HostApplication) initClient() {
 	if h.reorderTimeout > 0 {
 		h.messageProcessor = newInOrderProcessor(h.reorderTimeout, h.messageProcessor, commandPublisher)
 	}
+
+	h.commandPublisher = commandPublisher
 }
 
 func (h *HostApplication) stateTopic() string {
@@ -100,26 +117,14 @@ func (h *HostApplication) stateTopic() string {
 }
 
 func (h *HostApplication) onConnect(client mqtt.Client) {
-	hostStateTopic := h.stateTopic()
-
-	if token := client.Subscribe(hostStateTopic, byte(1), h.stateHandler); token.Wait() && token.Error() != nil {
-		h.logger.Error(
-			"error subscribing to STATE topic",
-			"topic", hostStateTopic,
-			"error", token.Error().Error(),
-		)
-	}
-
-	msgTypes := []messageType{
+	for _, msgType := range []messageType{
 		messageTypeNBIRTH,
 		messageTypeNDATA,
 		messageTypeNDEATH,
 		messageTypeDBIRTH,
 		messageTypeDDEATH,
 		messageTypeDDATA,
-	}
-
-	for _, msgType := range msgTypes {
+	} {
 		var topic string
 
 		if msgType.isEdgeNodeMessage() {
@@ -128,14 +133,30 @@ func (h *HostApplication) onConnect(client mqtt.Client) {
 			topic = fmt.Sprintf("%s/+/%s/+/+", sparkplugbNamespace, msgType)
 		}
 
-		token := client.Subscribe(topic, byte(0), h.msgHandler)
-		if token.Wait() && token.Error() != nil {
-			h.logger.Error(
-				"error subscribing to topic",
-				"topic", topic,
-				"error", token.Error().Error(),
-			)
-		}
+		client.AddRoute(topic, h.msgHandler)
+	}
+
+	if token := client.Subscribe(
+		fmt.Sprintf("%s/#", sparkplugbNamespace),
+		byte(0),
+		nil,
+	); token.Wait() && token.Error() != nil {
+		h.logger.Error(
+			"error subscribing to spBv1.0/# topic",
+			"error", token.Error().Error(),
+		)
+	}
+
+	hostStateTopic := h.stateTopic()
+
+	// even though the wildcard subscription to spBv1.0/# should already encompass the host STATE topic,
+	// the TCK spec requires an explicit subscription here.
+	if token := client.Subscribe(hostStateTopic, byte(1), h.stateHandler); token.Wait() && token.Error() != nil {
+		h.logger.Error(
+			"error subscribing to STATE topic",
+			"topic", hostStateTopic,
+			"error", token.Error().Error(),
+		)
 	}
 
 	// The Sparkplug Host Application MUST publish a
