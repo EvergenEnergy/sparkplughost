@@ -19,6 +19,22 @@ import (
 
 var logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
+func TestReturnsErrIfNoBrokersConfigured(t *testing.T) {
+	_, err := sparkplughost.NewHostApplication(nil, "hostID")
+	if err == nil {
+		t.Error("expected error but got none")
+	}
+}
+
+func TestReturnsErrIfNoURLSpecifiedForBroker(t *testing.T) {
+	brokerCfg := sparkplughost.MqttBrokerConfig{BrokerURL: ""}
+
+	_, err := sparkplughost.NewHostApplication([]sparkplughost.MqttBrokerConfig{brokerCfg}, "hostID")
+	if err == nil {
+		t.Error("expected error but got none")
+	}
+}
+
 func TestHostConnectsAndSendsBirthCertificate(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
@@ -26,7 +42,7 @@ func TestHostConnectsAndSendsBirthCertificate(t *testing.T) {
 	defer cancel()
 
 	hostID := fmt.Sprintf("test-host-%d", rand.Int())
-	host := sparkplughost.NewHostApplication([]string{testBrokerURL()}, hostID)
+	host, _ := sparkplughost.NewHostApplication([]sparkplughost.MqttBrokerConfig{testBrokerConfig()}, hostID)
 
 	go func() {
 		err := host.Run(ctx)
@@ -48,7 +64,7 @@ func TestHostPublishesDeathCertificateWhenStoppingGracefully(t *testing.T) {
 	defer cancel()
 
 	hostID := fmt.Sprintf("test-host-%d", rand.Int())
-	host := sparkplughost.NewHostApplication([]string{testBrokerURL()}, hostID)
+	host, _ := sparkplughost.NewHostApplication([]sparkplughost.MqttBrokerConfig{testBrokerConfig()}, hostID)
 
 	go func() {
 		err := host.Run(ctx)
@@ -736,8 +752,8 @@ func runAndCollectAllMetrics(t *testing.T, testFn func(mqtt.Client)) map[string]
 		receivedMetrics[metric.Metric.GetName()] = append(receivedMetrics[metric.Metric.GetName()], metric)
 	}
 
-	host := sparkplughost.NewHostApplication(
-		[]string{testBrokerURL()},
+	host, _ := sparkplughost.NewHostApplication(
+		[]sparkplughost.MqttBrokerConfig{testBrokerConfig()},
 		hostID,
 		sparkplughost.WithMetricHandler(metricHandler),
 		sparkplughost.WithLogger(logger),
@@ -775,7 +791,7 @@ func testMqttClient(t *testing.T) mqtt.Client {
 	t.Helper()
 
 	mqttOpts := mqtt.NewClientOptions()
-	mqttOpts.AddBroker(testBrokerURL())
+	mqttOpts.AddBroker(testBrokerConfig().BrokerURL)
 	mqttOpts.SetClientID(fmt.Sprintf("test-client-%d", rand.Int()))
 	mqttClient := mqtt.NewClient(mqttOpts)
 
@@ -786,8 +802,10 @@ func testMqttClient(t *testing.T) mqtt.Client {
 	return mqttClient
 }
 
-func testBrokerURL() string {
-	return os.Getenv("MQTT_BROKER_URL")
+func testBrokerConfig() sparkplughost.MqttBrokerConfig {
+	brokerURL := os.Getenv("MQTT_BROKER_URL")
+
+	return sparkplughost.MqttBrokerConfig{BrokerURL: brokerURL}
 }
 
 func waitForHostStatus(t *testing.T, mqttClient mqtt.Client, hostID string, online bool) {

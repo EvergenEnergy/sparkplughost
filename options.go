@@ -1,6 +1,7 @@
 package sparkplughost
 
 import (
+	"crypto/tls"
 	"io"
 	"log/slog"
 	"time"
@@ -52,4 +53,21 @@ func WithReorderTimeout(timeout time.Duration) Option {
 	return func(c *config) {
 		c.reorderTimeout = timeout
 	}
+}
+
+// MqttBrokerConfig contains the configuration
+// parameters for each of the MQTT Brokers to be
+// used.
+type MqttBrokerConfig struct {
+	// URL of the broker. The format should be scheme://host:port
+	// (e.g., tcp://localhost:1883). Required.
+	BrokerURL string
+	// Username if required by the broker. Optional.
+	Username string
+	// Password if required by the broker. Optional.
+	Password string
+	// SSL/TLS configuration to be used when connecting to an MQTT broker.
+	// This can be used for brokers where the authentication needs to happen
+	// via client certificates instead of username + password. Optional.
+	TLSConfig *tls.Config
 }
