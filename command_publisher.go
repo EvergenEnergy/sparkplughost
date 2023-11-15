@@ -2,6 +2,7 @@ package sparkplughost
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/EvergenEnergy/sparkplughost/protobuf"
@@ -16,13 +17,17 @@ const (
 
 type commandPublisher struct {
 	mqttClients map[string]mqtt.Client
+	logger      *slog.Logger
 }
 
-func newCommandPublisher(mqttClients map[string]mqtt.Client) *commandPublisher {
-	return &commandPublisher{mqttClients: mqttClients}
+func newCommandPublisher(mqttClients map[string]mqtt.Client, logger *slog.Logger) *commandPublisher {
+	return &commandPublisher{mqttClients: mqttClients, logger: logger}
 }
 
 func (c *commandPublisher) requestNodeRebirth(descriptor EdgeNodeDescriptor) error {
+	c.logger.Debug("Requesting Rebirth for edge node",
+		"edge_node_descriptor", descriptor.String())
+
 	return c.writeEdgeNodeMetrics(descriptor, []*protobuf.Payload_Metric{
 		{
 			Name:     proto.String(nodeRebirthMetricName),
@@ -33,6 +38,10 @@ func (c *commandPublisher) requestNodeRebirth(descriptor EdgeNodeDescriptor) err
 }
 
 func (c *commandPublisher) requestDeviceRebirth(descriptor EdgeNodeDescriptor, deviceID string) error {
+	c.logger.Debug("Requesting Rebirth for device",
+		"edge_node_descriptor", descriptor.String(),
+		"device_id", deviceID)
+
 	return c.writeDeviceMetrics(descriptor, deviceID, []*protobuf.Payload_Metric{
 		{
 			Name:     proto.String(deviceRebirthMetricName),

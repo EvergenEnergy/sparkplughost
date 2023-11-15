@@ -43,12 +43,18 @@ func WithMetricHandler(metricHandler MetricHandler) Option {
 	}
 }
 
+// WithLogger sets a `*slog.Logger` instance to use by the Host application.
+// This allows clients to enable/disable DEBUG and INFO messages.
+// The default logger sends everything to `io.Discard`.
 func WithLogger(logger *slog.Logger) Option {
 	return func(c *config) {
 		c.logger = logger
 	}
 }
 
+// WithReorderTimeout sets a timeout on how long to wait before requesting a Rebirth
+// when receiving messages out of order.
+// Default: 5 seconds.
 func WithReorderTimeout(timeout time.Duration) Option {
 	return func(c *config) {
 		c.reorderTimeout = timeout

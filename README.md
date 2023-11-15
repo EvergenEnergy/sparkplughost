@@ -25,9 +25,44 @@ allowing seamless integration with Sparkplug-compliant edge nodes and devices.
 go get -u github.com/EvergenEnergy/sparkplughost
 ```
 
+This package requires Go version 1.21 or higher.
+
 ## Usage
 
-TBD
+```go
+// 1. Configure your MQTT Brokers
+brokerConfig := sparkplughost.MqttBrokerConfig{BrokerURL: "tcp://broker.hivemq.com:1883"}
+
+// 2. Create a handler function that will be called whenever a metric is added or updated
+metricHandler := func(metric sparkplughost.HostMetric) {
+    log.Printf("Received metric callback:%v\n", metric)
+}
+
+// 3. Create the `HostApplication`. See options.go for further configuration options.
+host, err := sparkplughost.NewHostApplication(
+    []sparkplughost.MqttBrokerConfig{brokerConfig},
+    "my-host-id",
+    sparkplughost.WithMetricHandler(metricHandler),
+)
+if err != nil {
+    panic(err)
+}
+
+// 4. Start the application. The `Run` function will block until
+// `ctx` is cancelled.
+go func() {
+    if err := host.Run(ctx); err != nil {
+        panic(err)
+    }
+}()
+
+// 5. Optionally, use the `HostApplication` methods to send commands
+// to Edge Nodes and Devices
+// host.SendEdgeNodeCommand(sparkplughost.EdgeNodeDescriptor{GroupID:"group-id", EdgeNodeID:"edge-node-id"}, metrics)
+// host.SendDeviceCommand(sparkplughost.EdgeNodeDescriptor{GroupID:"group-id", EdgeNodeID:"edge-node-id"},deviceID, metrics)
+```
+
+Samples are available in the [examples](examples) directory for reference.
 
 ## Important Notice
 

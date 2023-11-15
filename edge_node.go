@@ -70,6 +70,7 @@ func (m *edgeNodeManager) processMessage(msg sparkplugMessage) {
 		"group_id", msgTopic.groupID,
 		"edge_node_id", msgTopic.edgeNodeID,
 		"device_id", msgTopic.deviceID,
+		"seq", msg.payload.GetSeq(),
 	)
 	logger.Debug("Processing message")
 
