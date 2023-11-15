@@ -140,7 +140,7 @@ func (h *HostApplication) initClients() {
 		h.mqttClients[brokerURL] = mqtt.NewClient(mqttOpts)
 	}
 
-	commandPublisher := newCommandPublisher(h.mqttClients)
+	commandPublisher := newCommandPublisher(h.mqttClients, h.logger)
 
 	h.messageProcessor = newEdgeNodeManager(h.metricHandler, commandPublisher, h.logger)
 	if h.reorderTimeout > 0 {
