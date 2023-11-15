@@ -6,7 +6,7 @@ import (
 )
 
 type rebirthRequester interface {
-	requestRebirth(descriptor EdgeNodeDescriptor) error
+	requestNodeRebirth(descriptor EdgeNodeDescriptor) error
 }
 
 // inOrderProcessor is a messageProcessor that handles the message ordering
@@ -102,7 +102,7 @@ func (p *inOrderProcessor) processMessage(msg sparkplugMessage) {
 		// an out of order msg), start it.
 		if nodeProcessor.reorderTimer == nil {
 			nodeProcessor.reorderTimer = time.AfterFunc(p.reorderTimeout, func() {
-				_ = p.rebirthRequester.requestRebirth(edgeNodeDescriptor)
+				_ = p.rebirthRequester.requestNodeRebirth(edgeNodeDescriptor)
 			})
 		}
 	}

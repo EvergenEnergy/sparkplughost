@@ -66,9 +66,6 @@ func TestHostPublishesDeathCertificateWhenStoppingGracefully(t *testing.T) {
 func TestHandlesMetricsOnNodeBirth(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
@@ -79,7 +76,7 @@ func TestHandlesMetricsOnNodeBirth(t *testing.T) {
 		})
 	}
 
-	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+	receivedMetrics := runAndCollectAllMetrics(t, testFn)
 
 	if len(receivedMetrics) != 2 {
 		t.Errorf("received %d metrics on node birth but expected 2", len(receivedMetrics))
@@ -98,9 +95,6 @@ func TestHandlesMetricsOnNodeBirth(t *testing.T) {
 func TestHandlesMetricsOnNodeDeath(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
 	testFn := func(client mqtt.Client) {
 		// send an initial BIRTH message, quickly followed by a DEATH one
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
@@ -114,7 +108,7 @@ func TestHandlesMetricsOnNodeDeath(t *testing.T) {
 		publishNodeDeath(client)
 	}
 
-	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+	receivedMetrics := runAndCollectAllMetrics(t, testFn)
 	fooMetric := receivedMetrics["foo"]
 
 	// we should have 2 callbacks for metric "foo": one after birth with quality: good
@@ -134,9 +128,6 @@ func TestHandlesMetricsOnNodeDeath(t *testing.T) {
 func TestHandlesMetricsOnNodeData(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
@@ -155,7 +146,7 @@ func TestHandlesMetricsOnNodeData(t *testing.T) {
 		}, 1)
 	}
 
-	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+	receivedMetrics := runAndCollectAllMetrics(t, testFn)
 	fooMetric := receivedMetrics["foo"]
 
 	// we should have 2 callbacks for metric "foo": one after birth with quality: good
@@ -175,9 +166,6 @@ func TestHandlesMetricsOnNodeData(t *testing.T) {
 func TestHandlesMetricsWithAliasOnNodeData(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
@@ -197,7 +185,7 @@ func TestHandlesMetricsWithAliasOnNodeData(t *testing.T) {
 		}, 1)
 	}
 
-	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+	receivedMetrics := runAndCollectAllMetrics(t, testFn)
 	fooMetric := receivedMetrics["foo"]
 
 	// we should have 2 callbacks for metric "foo": one after birth with quality: good
@@ -217,9 +205,6 @@ func TestHandlesMetricsWithAliasOnNodeData(t *testing.T) {
 func TestRequestsRebirthWhenReceivingDataWithoutPreviousBirth(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
 	testFn := func(client mqtt.Client) {
 		publishNodeData(client, []*protobuf.Payload_Metric{
 			{
@@ -232,14 +217,11 @@ func TestRequestsRebirthWhenReceivingDataWithoutPreviousBirth(t *testing.T) {
 		waitForRebirthRequest(t, client)
 	}
 
-	runAndCollectAllMetrics(ctx, t, testFn)
+	runAndCollectAllMetrics(t, testFn)
 }
 
 func TestRequestsRebirthWhenReceivingUnknownAlias(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
 
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
@@ -262,14 +244,11 @@ func TestRequestsRebirthWhenReceivingUnknownAlias(t *testing.T) {
 		waitForRebirthRequest(t, client)
 	}
 
-	runAndCollectAllMetrics(ctx, t, testFn)
+	runAndCollectAllMetrics(t, testFn)
 }
 
 func TestRequestsRebirthWhenReceivingUnknownMetric(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
 
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
@@ -291,14 +270,11 @@ func TestRequestsRebirthWhenReceivingUnknownMetric(t *testing.T) {
 		waitForRebirthRequest(t, client)
 	}
 
-	runAndCollectAllMetrics(ctx, t, testFn)
+	runAndCollectAllMetrics(t, testFn)
 }
 
 func TestRequestsRebirthWhenReceivingDuplicatedAlias(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
 
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
@@ -319,14 +295,11 @@ func TestRequestsRebirthWhenReceivingDuplicatedAlias(t *testing.T) {
 		waitForRebirthRequest(t, client)
 	}
 
-	runAndCollectAllMetrics(ctx, t, testFn)
+	runAndCollectAllMetrics(t, testFn)
 }
 
 func TestHandlesMetricsOnDeviceBirth(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
 
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
@@ -345,7 +318,7 @@ func TestHandlesMetricsOnDeviceBirth(t *testing.T) {
 		}, 1)
 	}
 
-	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+	receivedMetrics := runAndCollectAllMetrics(t, testFn)
 
 	deviceMetric := receivedMetrics["device-metric"]
 
@@ -367,9 +340,6 @@ func TestHandlesMetricsOnDeviceBirth(t *testing.T) {
 func TestHandlesMetricsOnDeviceDeath(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
@@ -388,7 +358,7 @@ func TestHandlesMetricsOnDeviceDeath(t *testing.T) {
 		publishDeviceDeath(client)
 	}
 
-	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+	receivedMetrics := runAndCollectAllMetrics(t, testFn)
 
 	deviceMetric := receivedMetrics["device-metric"]
 	if len(deviceMetric) != 2 {
@@ -405,9 +375,6 @@ func TestHandlesMetricsOnDeviceDeath(t *testing.T) {
 
 func TestDeviceMetricsAreSetToStaleWhenEdgeNodeGoesOffline(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
 
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
@@ -428,7 +395,7 @@ func TestDeviceMetricsAreSetToStaleWhenEdgeNodeGoesOffline(t *testing.T) {
 		publishNodeDeath(client)
 	}
 
-	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+	receivedMetrics := runAndCollectAllMetrics(t, testFn)
 
 	deviceMetric := receivedMetrics["device-metric"]
 	if len(deviceMetric) != 2 {
@@ -446,9 +413,6 @@ func TestDeviceMetricsAreSetToStaleWhenEdgeNodeGoesOffline(t *testing.T) {
 func TestHandlesMetricsOnDeviceData(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
@@ -473,12 +437,12 @@ func TestHandlesMetricsOnDeviceData(t *testing.T) {
 		}, 2)
 	}
 
-	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+	receivedMetrics := runAndCollectAllMetrics(t, testFn)
 
 	deviceMetric := receivedMetrics["device-metric"]
 
 	if len(deviceMetric) != 2 {
-		t.Errorf("received %d metrics on device birth but expected 1", len(receivedMetrics))
+		t.Errorf("received %d metrics on device birth but expected 2", len(receivedMetrics))
 	}
 
 	if got := deviceMetric[0].Metric.GetLongValue(); got != 1 {
@@ -492,9 +456,6 @@ func TestHandlesMetricsOnDeviceData(t *testing.T) {
 func TestHandlesMetricsWithAliasOnDeviceData(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
@@ -520,7 +481,7 @@ func TestHandlesMetricsWithAliasOnDeviceData(t *testing.T) {
 		}, 2)
 	}
 
-	receivedMetrics := runAndCollectAllMetrics(ctx, t, testFn)
+	receivedMetrics := runAndCollectAllMetrics(t, testFn)
 
 	deviceMetric := receivedMetrics["device-metric"]
 
@@ -539,9 +500,6 @@ func TestHandlesMetricsWithAliasOnDeviceData(t *testing.T) {
 func TestRequestsRebirthWhenReceivingDeviceBirthWithoutPreviousNodeBirth(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
 	testFn := func(client mqtt.Client) {
 		publishDeviceBirth(client, []*protobuf.Payload_Metric{
 			{
@@ -555,14 +513,11 @@ func TestRequestsRebirthWhenReceivingDeviceBirthWithoutPreviousNodeBirth(t *test
 		waitForRebirthRequest(t, client)
 	}
 
-	runAndCollectAllMetrics(ctx, t, testFn)
+	runAndCollectAllMetrics(t, testFn)
 }
 
 func TestRequestsRebirthWhenReceivingDeviceDataWithoutPreviousDeviceBirth(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
 
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
@@ -583,14 +538,11 @@ func TestRequestsRebirthWhenReceivingDeviceDataWithoutPreviousDeviceBirth(t *tes
 		waitForRebirthRequest(t, client)
 	}
 
-	runAndCollectAllMetrics(ctx, t, testFn)
+	runAndCollectAllMetrics(t, testFn)
 }
 
 func TestRequestsRebirthOnDuplicatedDeviceMetricAlias(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
 
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
@@ -618,14 +570,11 @@ func TestRequestsRebirthOnDuplicatedDeviceMetricAlias(t *testing.T) {
 		waitForRebirthRequest(t, client)
 	}
 
-	runAndCollectAllMetrics(ctx, t, testFn)
+	runAndCollectAllMetrics(t, testFn)
 }
 
 func TestRequestsRebirthOnDeviceUnknownAlias(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
 
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
@@ -653,14 +602,11 @@ func TestRequestsRebirthOnDeviceUnknownAlias(t *testing.T) {
 		waitForRebirthRequest(t, client)
 	}
 
-	runAndCollectAllMetrics(ctx, t, testFn)
+	runAndCollectAllMetrics(t, testFn)
 }
 
 func TestRequestsRebirthOnReorderTimeoutExpiration(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
 
 	testFn := func(client mqtt.Client) {
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
@@ -688,7 +634,7 @@ func TestRequestsRebirthOnReorderTimeoutExpiration(t *testing.T) {
 		waitForRebirthRequest(t, client)
 	}
 
-	runAndCollectAllMetrics(ctx, t, testFn)
+	runAndCollectAllMetrics(t, testFn)
 }
 
 func publishNodeBirth(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric) {
@@ -774,7 +720,10 @@ func publishDeviceData(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metri
 // is cancelled.
 // The testFn parameter takes a mqtt client so that each test can simulate the flow of expected messages from an
 // edge node/device point of view.
-func runAndCollectAllMetrics(ctx context.Context, t *testing.T, testFn func(mqtt.Client)) map[string][]sparkplughost.HostMetric {
+func runAndCollectAllMetrics(t *testing.T, testFn func(mqtt.Client)) map[string][]sparkplughost.HostMetric {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
 	mqttClient := testMqttClient(t)
 	defer mqttClient.Disconnect(250)
 

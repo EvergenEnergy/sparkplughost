@@ -116,7 +116,7 @@ func (m *edgeNodeManager) edgeNodeOnline(edgeNodeDescriptor EdgeNodeDescriptor, 
 	err = metrics.addNodeBirthMetrics(payload.GetMetrics())
 	if err != nil {
 		if errors.Is(err, errOutOfSync) {
-			return m.rebirthRequester.requestRebirth(edgeNodeDescriptor)
+			return m.rebirthRequester.requestNodeRebirth(edgeNodeDescriptor)
 		}
 
 		return err
@@ -146,18 +146,18 @@ func (m *edgeNodeManager) deviceOnline(edgeNodeDescriptor EdgeNodeDescriptor, de
 
 	node, found := m.nodes[edgeNodeDescriptor]
 	if !found || !node.online {
-		return m.rebirthRequester.requestRebirth(edgeNodeDescriptor)
+		return m.rebirthRequester.requestNodeRebirth(edgeNodeDescriptor)
 	}
 
 	nodeMetrics, found := m.metrics[edgeNodeDescriptor]
 	if !found {
-		return m.rebirthRequester.requestRebirth(edgeNodeDescriptor)
+		return m.rebirthRequester.requestNodeRebirth(edgeNodeDescriptor)
 	}
 
 	err := nodeMetrics.addDeviceBirthMetrics(deviceID, payload.GetMetrics())
 	if err != nil {
 		if errors.Is(err, errOutOfSync) {
-			return m.rebirthRequester.requestRebirth(edgeNodeDescriptor)
+			return m.rebirthRequester.requestNodeRebirth(edgeNodeDescriptor)
 		}
 
 		return err
@@ -278,18 +278,18 @@ func (m *edgeNodeManager) edgeNodeData(descriptor EdgeNodeDescriptor, newDataMet
 
 	node, found := m.nodes[descriptor]
 	if !found || !node.online {
-		return m.rebirthRequester.requestRebirth(descriptor)
+		return m.rebirthRequester.requestNodeRebirth(descriptor)
 	}
 
 	metrics, found := m.metrics[descriptor]
 	if !found {
-		return m.rebirthRequester.requestRebirth(descriptor)
+		return m.rebirthRequester.requestNodeRebirth(descriptor)
 	}
 
 	err := metrics.addNodeMetrics(newDataMetrics)
 	if err != nil {
 		if errors.Is(err, errOutOfSync) {
-			return m.rebirthRequester.requestRebirth(descriptor)
+			return m.rebirthRequester.requestNodeRebirth(descriptor)
 		}
 
 		return err
@@ -308,23 +308,23 @@ func (m *edgeNodeManager) deviceData(descriptor EdgeNodeDescriptor, deviceID str
 
 	node, found := m.nodes[descriptor]
 	if !found || !node.online {
-		return m.rebirthRequester.requestRebirth(descriptor)
+		return m.rebirthRequester.requestNodeRebirth(descriptor)
 	}
 
 	device, found := node.devices[deviceID]
 	if !found || !device.online {
-		return m.rebirthRequester.requestRebirth(descriptor)
+		return m.rebirthRequester.requestNodeRebirth(descriptor)
 	}
 
 	metrics, found := m.metrics[descriptor]
 	if !found {
-		return m.rebirthRequester.requestRebirth(descriptor)
+		return m.rebirthRequester.requestNodeRebirth(descriptor)
 	}
 
 	err := metrics.addDeviceMetrics(deviceID, newDataMetrics)
 	if err != nil {
 		if errors.Is(err, errOutOfSync) {
-			return m.rebirthRequester.requestRebirth(descriptor)
+			return m.rebirthRequester.requestNodeRebirth(descriptor)
 		}
 
 		return err
