@@ -1,7 +1,5 @@
 name: ci
-on:
-  push:
-
+on: [push, pull_request]
 jobs:
   test:
     name: Build and test
@@ -21,10 +19,18 @@ jobs:
       - name: Build
         run: go build -v ./...
 
-      - name: Test
+      - name: Run Test
         env:
           MQTT_BROKER_URL: "tcp://localhost:1883"
-        run: go test -race -v ./...
+        run: go test -race -v -covermode atomic -coverprofile=covprofile ./...
+
+      - name: Install goveralls
+        run: go install github.com/mattn/goveralls@latest
+
+      - name: Send coverage
+        env:
+          COVERALLS_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+        run: goveralls -coverprofile=covprofile -service=github
 
   lint:
     runs-on: ubuntu-latest
