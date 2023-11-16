@@ -21,3 +21,5 @@
 go.work
 /sparkplug-host.iml
 /.idea/
+
+dist/
