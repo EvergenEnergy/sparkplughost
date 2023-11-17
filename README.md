@@ -20,6 +20,7 @@ allowing seamless integration with Sparkplug-compliant edge nodes and devices.
 - **Customizable Callbacks**: Receive real-time updates with customizable callback functions for metrics, births, commands, and other events.
 - **Command Writing Support**: Use the library to write commands to both edge nodes and devices.
 - **Flexible Design**: Create dynamic and tailored Host Applications suited to your specific use case.
+- **Fully compliant**: The library fully passes the [Eclipse Sparkplug TCK](https://github.com/eclipse-sparkplug/sparkplug/blob/master/tck/README.md). Latest execution logs are available [here](tck/tck.log).
 
 ## Installation
 
