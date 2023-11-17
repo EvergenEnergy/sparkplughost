@@ -6,6 +6,8 @@ Go based package to use for implementing Sparkplug B Host Applications
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Report Card](https://goreportcard.com/badge/github.com/EvergenEnergy/sparkplughost)](https://goreportcard.com/report/github.com/EvergenEnergy/sparkplughost)
 [![Coverage Status](https://coveralls.io/repos/github/EvergenEnergy/sparkplug-host/badge.svg?branch=coverall)](https://coveralls.io/github/EvergenEnergy/sparkplug-host?branch=coverall)
+[![Go Reference](https://pkg.go.dev/badge/github.com/EvergenEnergy/sparkplughost.svg)](https://pkg.go.dev/github.com/EvergenEnergy/sparkplughost)
+[![ci](https://github.com/EvergenEnergy/sparkplughost/actions/workflows/ci.yaml/badge.svg)](https://github.com/EvergenEnergy/sparkplughost/actions/workflows/ci.yaml)
 
 
 The Sparkplug Host Library for Go is designed to assist developers in creating custom Host Applications adhering to the Sparkplug standard. 

@@ -33,6 +33,9 @@ func main() {
 	}
 
 	brokerConfig, err := buildBrokerConfig(brokerURL, certFile, keyFile)
+	if err != nil {
+		panic(err)
+	}
 
 	host, err := sparkplughost.NewHostApplication(
 		[]sparkplughost.MqttBrokerConfig{brokerConfig},
