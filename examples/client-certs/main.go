@@ -11,17 +11,26 @@ import (
 	"time"
 
 	"github.com/EvergenEnergy/sparkplughost"
-	"github.com/EvergenEnergy/sparkplughost/protobuf"
 )
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	var brokerURL, certFile, keyFile string
+	var (
+		brokerURL, certFile, keyFile, hostID string
+		// optional filters
+		groupID, edgeNodeID, deviceID, metricName string
+	)
 
 	flag.StringVar(&brokerURL, "broker-url", "", "URL of the mqtt broker. E.g., ssl://localhost:1883")
 	flag.StringVar(&certFile, "cert", "", "Path to the client certificate file")
 	flag.StringVar(&keyFile, "key", "", "Path to the private key file")
+	flag.StringVar(&hostID, "host-id", "", "This ID will be used as the client ID for the MQTT connection")
+
+	flag.StringVar(&groupID, "group-id", "", "Only log messages from this group ID (Optional)")
+	flag.StringVar(&edgeNodeID, "edge-node-id", "", "Only log messages from this edge node ID (Optional)")
+	flag.StringVar(&deviceID, "device-id", "", "Only log messages from this device ID (Optional)")
+	flag.StringVar(&metricName, "metric-name", "", "Only log messages for this metric (Optional)")
 	flag.Parse()
 
 	if brokerURL == "" {
@@ -32,27 +41,28 @@ func main() {
 		panic("Both client certificate and private key file paths are required")
 	}
 
+	if hostID == "" {
+		panic("Host ID is required")
+	}
+
 	brokerConfig, err := buildBrokerConfig(brokerURL, certFile, keyFile)
 	if err != nil {
 		panic(err)
 	}
 
+	metricHandler := loggingHandler(logger, loggingFilters{
+		groupID:    groupID,
+		edgeNodeID: edgeNodeID,
+		deviceID:   deviceID,
+		metricName: metricName,
+	})
+
 	host, err := sparkplughost.NewHostApplication(
 		[]sparkplughost.MqttBrokerConfig{brokerConfig},
-		"my-host-id",
+		hostID,
 		sparkplughost.WithReorderTimeout(5*time.Second),
 		sparkplughost.WithLogger(logger),
-		sparkplughost.WithMetricHandler(func(metric sparkplughost.HostMetric) {
-			logger.Info(
-				"Received metric callback",
-				"metric_name", metric.Metric.GetName(),
-				"edge_node_descriptor", metric.EdgeNodeDescriptor.String(),
-				"metric_type", protobuf.DataType_name[int32(metric.Metric.GetDatatype())],
-				"device_id", metric.DeviceID,
-				"quality", metric.Quality,
-				"value", metric.Metric.GetValue(),
-			)
-		}),
+		sparkplughost.WithMetricHandler(metricHandler),
 	)
 	if err != nil {
 		panic(err)
