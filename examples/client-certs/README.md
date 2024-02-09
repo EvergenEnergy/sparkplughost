@@ -5,7 +5,24 @@ using client certificates in order to read and write metrics.
 
 To run it you can use:
 ```bash
-go run . -broker-url ssl://<host>:<port> -cert <path-to-client-cert-file> -key <path-to-private-key-file>
+go run . <flags>:
+
+  -broker-url string
+        URL of the mqtt broker. E.g., ssl://localhost:1883 (Required)
+  -cert string
+        Path to the client certificate file (Required)
+  -device-id string
+        Only log messages from this device ID (Optional)
+  -edge-node-id string
+        Only log messages from this edge node ID (Optional)
+  -group-id string
+        Only log messages from this group ID (Optional)
+  -host-id string
+        This ID will be used as the client ID for the MQTT connection (Required)
+  -key string
+        Path to the private key file (Required)
+  -metric-name string
+        Only log messages for this metric (Optional)
 ```
 
 ## Reading metrics

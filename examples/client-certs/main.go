@@ -22,10 +22,10 @@ func main() {
 		groupID, edgeNodeID, deviceID, metricName string
 	)
 
-	flag.StringVar(&brokerURL, "broker-url", "", "URL of the mqtt broker. E.g., ssl://localhost:1883")
-	flag.StringVar(&certFile, "cert", "", "Path to the client certificate file")
-	flag.StringVar(&keyFile, "key", "", "Path to the private key file")
-	flag.StringVar(&hostID, "host-id", "", "This ID will be used as the client ID for the MQTT connection")
+	flag.StringVar(&brokerURL, "broker-url", "", "URL of the mqtt broker. E.g., ssl://localhost:1883 (Required)")
+	flag.StringVar(&certFile, "cert", "", "Path to the client certificate file (Required)")
+	flag.StringVar(&keyFile, "key", "", "Path to the private key file (Required)")
+	flag.StringVar(&hostID, "host-id", "", "This ID will be used as the client ID for the MQTT connection (Required)")
 
 	flag.StringVar(&groupID, "group-id", "", "Only log messages from this group ID (Optional)")
 	flag.StringVar(&edgeNodeID, "edge-node-id", "", "Only log messages from this edge node ID (Optional)")
