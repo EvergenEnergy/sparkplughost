@@ -86,7 +86,6 @@ func handleMetricWriteRequest(host *sparkplughost.HostApplication, logger *slog.
 				GroupID:    groupID,
 				EdgeNodeID: edgeNodeID,
 			}, protoMetrics)
-
 		} else {
 			err = host.SendDeviceCommand(sparkplughost.EdgeNodeDescriptor{
 				GroupID:    groupID,
