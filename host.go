@@ -123,7 +123,7 @@ func (h *HostApplication) initClients() {
 		mqttOpts.SetOrderMatters(true)
 		mqttOpts.SetOnConnectHandler(h.onConnect(brokerURL))
 		mqttOpts.SetReconnectingHandler(h.onReconnect(brokerURL))
-		mqttOpts.SetDefaultPublishHandler(func(_ mqtt.Client, message mqtt.Message) {})
+		mqttOpts.SetDefaultPublishHandler(func(_ mqtt.Client, _ mqtt.Message) {})
 
 		if len(brokerConfig.Username) > 0 {
 			mqttOpts.SetUsername(brokerConfig.Username)
@@ -210,13 +210,13 @@ func (h *HostApplication) onConnect(brokerURL string) mqtt.OnConnectHandler {
 }
 
 func (h *HostApplication) onReconnect(brokerURL string) mqtt.ReconnectHandler {
-	return func(client mqtt.Client, options *mqtt.ClientOptions) {
+	return func(_ mqtt.Client, options *mqtt.ClientOptions) {
 		h.setLastWill(brokerURL, options)
 	}
 }
 
 func (h *HostApplication) stateHandler(brokerURL string) mqtt.MessageHandler {
-	return func(client mqtt.Client, message mqtt.Message) {
+	return func(_ mqtt.Client, message mqtt.Message) {
 		// the STATE topic uses QOS 1, so we need to make sure we ACK the message
 		defer message.Ack()
 

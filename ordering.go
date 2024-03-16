@@ -91,6 +91,7 @@ func (p *inOrderProcessor) processMessage(msg sparkplugMessage) {
 	// If the message is in the correct order, process it immediately and reset the timer.
 	if msgSeqNumber == nodeProcessor.expectedSeq {
 		p.next.processMessage(msg)
+
 		nodeProcessor.expectedSeq++
 
 		nodeProcessor.resetTimer()

@@ -68,3 +68,16 @@ func TestCachingHandler(t *testing.T) {
 		t.Errorf("expected 3 metric but got %d", len(allMetrics))
 	}
 }
+
+func TestProcessingTheSameMetricMultipleTimes(t *testing.T) {
+	handler := sparkplughost.NewCachingHandler()
+
+	for i := 0; i < 100; i++ {
+		handler.HandleMetric(metrics[0])
+	}
+
+	allMetrics := handler.EdgeNodeMetrics(metrics[0].EdgeNodeDescriptor)
+	if len(allMetrics) != 1 {
+		t.Errorf("expected 1 metric but got %d", len(allMetrics))
+	}
+}

@@ -17,18 +17,20 @@ type CachingHandler struct {
 	// reverse indexes from group/node/device id
 	// to all metric keys for that component in the
 	// metrics map above
-	byGroup    map[string][]string
-	byEdgeNode map[EdgeNodeDescriptor][]string
-	byDevice   map[string][]string
+	byGroup    map[string]metricKeySet
+	byEdgeNode map[EdgeNodeDescriptor]metricKeySet
+	byDevice   map[string]metricKeySet
 }
+
+type metricKeySet map[string]struct{}
 
 // NewCachingHandler returns a new handler ready to be used.
 func NewCachingHandler() *CachingHandler {
 	return &CachingHandler{
 		metrics:    make(map[string]HostMetric),
-		byGroup:    make(map[string][]string),
-		byEdgeNode: make(map[EdgeNodeDescriptor][]string),
-		byDevice:   make(map[string][]string),
+		byGroup:    make(map[string]metricKeySet),
+		byEdgeNode: make(map[EdgeNodeDescriptor]metricKeySet),
+		byDevice:   make(map[string]metricKeySet),
 	}
 }
 
@@ -43,9 +45,23 @@ func (c *CachingHandler) HandleMetric(metric HostMetric) {
 
 	c.metrics[metricKey] = metric
 
-	c.byGroup[metric.EdgeNodeDescriptor.GroupID] = append(c.byGroup[metric.EdgeNodeDescriptor.GroupID], metricKey)
-	c.byEdgeNode[metric.EdgeNodeDescriptor] = append(c.byEdgeNode[metric.EdgeNodeDescriptor], metricKey)
-	c.byDevice[deviceKey] = append(c.byDevice[deviceKey], metricKey)
+	if _, ok := c.byGroup[metric.EdgeNodeDescriptor.GroupID]; !ok {
+		c.byGroup[metric.EdgeNodeDescriptor.GroupID] = make(metricKeySet)
+	}
+
+	c.byGroup[metric.EdgeNodeDescriptor.GroupID][metricKey] = struct{}{}
+
+	if _, ok := c.byEdgeNode[metric.EdgeNodeDescriptor]; !ok {
+		c.byEdgeNode[metric.EdgeNodeDescriptor] = make(metricKeySet)
+	}
+
+	c.byEdgeNode[metric.EdgeNodeDescriptor][metricKey] = struct{}{}
+
+	if _, ok := c.byDevice[deviceKey]; !ok {
+		c.byDevice[deviceKey] = make(metricKeySet)
+	}
+
+	c.byDevice[deviceKey][metricKey] = struct{}{}
 }
 
 // AllMetrics returns all currently known metrics in the MQTT infrastructure.
@@ -110,16 +126,16 @@ func deviceKey(descriptor EdgeNodeDescriptor, deviceID string) string {
 	return fmt.Sprintf("%s/%s", descriptor, deviceID)
 }
 
-func (c *CachingHandler) collectMetrics(metricKeys []string) []HostMetric {
-	res := make([]HostMetric, len(metricKeys))
+func (c *CachingHandler) collectMetrics(metricKeys metricKeySet) []HostMetric {
+	res := make([]HostMetric, 0, len(metricKeys))
 
-	for i, mk := range metricKeys {
-		metric, ok := c.metrics[mk]
+	for i := range metricKeys {
+		metric, ok := c.metrics[i]
 		if !ok {
 			continue
 		}
 
-		res[i] = metric
+		res = append(res, metric)
 	}
 
 	return res
