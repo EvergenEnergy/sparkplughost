@@ -5,7 +5,7 @@ go 1.23.5
 require (
 	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/google/go-cmp v0.6.0
-	google.golang.org/protobuf v1.36.4
+	google.golang.org/protobuf v1.36.5
 )
 
 require (
