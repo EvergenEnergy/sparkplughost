@@ -95,7 +95,8 @@ func main() {
 	}()
 
 	<-ctx.Done()
-	srv.Shutdown(context.Background())
+
+	_ = srv.Shutdown(context.Background())
 }
 
 func buildBrokerConfig(brokerURL, certFile, keyFile string) (sparkplughost.MqttBrokerConfig, error) {
