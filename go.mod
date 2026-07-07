@@ -1,6 +1,6 @@
 module github.com/EvergenEnergy/sparkplughost
 
-go 1.25.0
+go 1.25.11
 
 require (
 	github.com/eclipse/paho.mqtt.golang v1.5.1
