@@ -27,6 +27,8 @@ type HostApplication struct {
 	messageProcessor          messageProcessor
 	disconnectTimeout         time.Duration
 	reorderTimeout            time.Duration
+	mqttKeepAlive             time.Duration
+	mqttWriteTimeout          time.Duration
 	commandPublisher          *commandPublisher
 }
 
@@ -53,6 +55,8 @@ func NewHostApplication(brokerConfigs []MqttBrokerConfig, hostID string, opts ..
 		metricHandler:             cfg.metricHandler,
 		disconnectTimeout:         cfg.disconnectTimeout,
 		reorderTimeout:            cfg.reorderTimeout,
+		mqttKeepAlive:             cfg.mqttKeepAlive,
+		mqttWriteTimeout:          cfg.mqttWriteTimeout,
 		mqttClients:               make(map[string]mqtt.Client, len(brokerConfigs)),
 		lastWillMessageTimestamps: make(map[string]time.Time, len(brokerConfigs)),
 	}, nil
@@ -120,6 +124,11 @@ func (h *HostApplication) initClients() {
 		mqttOpts.SetClientID(h.hostID)
 		mqttOpts.SetCleanSession(true)
 		mqttOpts.SetAutoReconnect(true)
+		mqttOpts.SetKeepAlive(h.mqttKeepAlive)
+		// A non-zero write timeout ensures a stalled keepalive PING on a half-open
+		// connection fails instead of blocking forever, so ConnectionLost is
+		// reported and AutoReconnect can recover. See WithMqttWriteTimeout.
+		mqttOpts.SetWriteTimeout(h.mqttWriteTimeout)
 		mqttOpts.SetOrderMatters(true)
 		mqttOpts.SetOnConnectHandler(h.onConnect(brokerURL))
 		mqttOpts.SetReconnectingHandler(h.onReconnect(brokerURL))
