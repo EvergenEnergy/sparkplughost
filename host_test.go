@@ -38,43 +38,60 @@ func TestReturnsErrIfNoURLSpecifiedForBroker(t *testing.T) {
 func TestHostConnectsAndSendsBirthCertificate(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	// keep the host running until we've seen its birth certificate:
+	// shutting it down earlier replaces the retained STATE message with
+	// online=false and the test would never observe online=true.
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	hostID := fmt.Sprintf("test-host-%d", rand.Int())
 	host, _ := sparkplughost.NewHostApplication([]sparkplughost.MqttBrokerConfig{testBrokerConfig()}, hostID)
 
+	runErr := make(chan error, 1)
+
 	go func() {
-		err := host.Run(ctx)
-		if err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
+		runErr <- host.Run(ctx)
 	}()
 
 	mqttClient := testMqttClient(t)
 	defer mqttClient.Disconnect(250)
 
 	waitForHostStatus(t, mqttClient, hostID, true)
+
+	cancel()
+
+	if err := <-runErr; err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 }
 
 func TestHostPublishesDeathCertificateWhenStoppingGracefully(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	hostID := fmt.Sprintf("test-host-%d", rand.Int())
 	host, _ := sparkplughost.NewHostApplication([]sparkplughost.MqttBrokerConfig{testBrokerConfig()}, hostID)
 
+	runErr := make(chan error, 1)
+
 	go func() {
-		err := host.Run(ctx)
-		if err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
+		runErr <- host.Run(ctx)
 	}()
 
 	mqttClient := testMqttClient(t)
 	defer mqttClient.Disconnect(250)
+
+	// wait until the host is online, then stop it gracefully and expect
+	// the death certificate to replace the retained birth certificate.
+	waitForHostStatus(t, mqttClient, hostID, true)
+
+	cancel()
+
+	if err := <-runErr; err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 
 	waitForHostStatus(t, mqttClient, hostID, false)
 }
@@ -222,6 +239,8 @@ func TestRequestsRebirthWhenReceivingDataWithoutPreviousBirth(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
 	testFn := func(client mqtt.Client) {
+		waitForRebirth := expectRebirthRequest(t, client)
+
 		publishNodeData(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("foo"),
@@ -230,7 +249,7 @@ func TestRequestsRebirthWhenReceivingDataWithoutPreviousBirth(t *testing.T) {
 			},
 		}, 0)
 
-		waitForRebirthRequest(t, client)
+		waitForRebirth()
 	}
 
 	runAndCollectAllMetrics(t, testFn)
@@ -240,6 +259,8 @@ func TestRequestsRebirthWhenReceivingUnknownAlias(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
 	testFn := func(client mqtt.Client) {
+		waitForRebirth := expectRebirthRequest(t, client)
+
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("foo"),
@@ -257,7 +278,7 @@ func TestRequestsRebirthWhenReceivingUnknownAlias(t *testing.T) {
 			},
 		}, 1)
 
-		waitForRebirthRequest(t, client)
+		waitForRebirth()
 	}
 
 	runAndCollectAllMetrics(t, testFn)
@@ -267,6 +288,8 @@ func TestRequestsRebirthWhenReceivingUnknownMetric(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
 	testFn := func(client mqtt.Client) {
+		waitForRebirth := expectRebirthRequest(t, client)
+
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("foo"),
@@ -283,7 +306,7 @@ func TestRequestsRebirthWhenReceivingUnknownMetric(t *testing.T) {
 			},
 		}, 1)
 
-		waitForRebirthRequest(t, client)
+		waitForRebirth()
 	}
 
 	runAndCollectAllMetrics(t, testFn)
@@ -293,6 +316,8 @@ func TestRequestsRebirthWhenReceivingDuplicatedAlias(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
 	testFn := func(client mqtt.Client) {
+		waitForRebirth := expectRebirthRequest(t, client)
+
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("foo"),
@@ -308,7 +333,7 @@ func TestRequestsRebirthWhenReceivingDuplicatedAlias(t *testing.T) {
 			},
 		})
 
-		waitForRebirthRequest(t, client)
+		waitForRebirth()
 	}
 
 	runAndCollectAllMetrics(t, testFn)
@@ -517,6 +542,8 @@ func TestRequestsRebirthWhenReceivingDeviceBirthWithoutPreviousNodeBirth(t *test
 	checkIntegrationTestEnvVar(t)
 
 	testFn := func(client mqtt.Client) {
+		waitForRebirth := expectRebirthRequest(t, client)
+
 		publishDeviceBirth(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("device-metric"),
@@ -526,7 +553,7 @@ func TestRequestsRebirthWhenReceivingDeviceBirthWithoutPreviousNodeBirth(t *test
 			},
 		}, 0)
 
-		waitForRebirthRequest(t, client)
+		waitForRebirth()
 	}
 
 	runAndCollectAllMetrics(t, testFn)
@@ -536,6 +563,8 @@ func TestRequestsRebirthWhenReceivingDeviceDataWithoutPreviousDeviceBirth(t *tes
 	checkIntegrationTestEnvVar(t)
 
 	testFn := func(client mqtt.Client) {
+		waitForRebirth := expectRebirthRequest(t, client)
+
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("foo"),
@@ -551,7 +580,7 @@ func TestRequestsRebirthWhenReceivingDeviceDataWithoutPreviousDeviceBirth(t *tes
 			},
 		}, 1)
 
-		waitForRebirthRequest(t, client)
+		waitForRebirth()
 	}
 
 	runAndCollectAllMetrics(t, testFn)
@@ -561,6 +590,8 @@ func TestRequestsRebirthOnDuplicatedDeviceMetricAlias(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
 	testFn := func(client mqtt.Client) {
+		waitForRebirth := expectRebirthRequest(t, client)
+
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("foo"),
@@ -583,7 +614,7 @@ func TestRequestsRebirthOnDuplicatedDeviceMetricAlias(t *testing.T) {
 			},
 		}, 1)
 
-		waitForRebirthRequest(t, client)
+		waitForRebirth()
 	}
 
 	runAndCollectAllMetrics(t, testFn)
@@ -593,6 +624,8 @@ func TestRequestsRebirthOnDeviceUnknownAlias(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
 	testFn := func(client mqtt.Client) {
+		waitForRebirth := expectRebirthRequest(t, client)
+
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("foo"),
@@ -615,7 +648,7 @@ func TestRequestsRebirthOnDeviceUnknownAlias(t *testing.T) {
 			},
 		}, 2)
 
-		waitForRebirthRequest(t, client)
+		waitForRebirth()
 	}
 
 	runAndCollectAllMetrics(t, testFn)
@@ -625,6 +658,8 @@ func TestRequestsRebirthOnReorderTimeoutExpiration(t *testing.T) {
 	checkIntegrationTestEnvVar(t)
 
 	testFn := func(client mqtt.Client) {
+		waitForRebirth := expectRebirthRequest(t, client)
+
 		publishNodeBirth(client, []*protobuf.Payload_Metric{
 			{
 				Name:     proto.String("foo"),
@@ -647,10 +682,33 @@ func TestRequestsRebirthOnReorderTimeoutExpiration(t *testing.T) {
 			},
 		}, 3)
 
-		waitForRebirthRequest(t, client)
+		waitForRebirth()
 	}
 
 	runAndCollectAllMetrics(t, testFn)
+}
+
+// sentinelEdgeNodeID identifies a throwaway edge node whose birth certificate
+// is published after a test's own messages to detect when they have all been
+// processed by the host. Its metrics are excluded from the collected results.
+const sentinelEdgeNodeID = "shutdown-sentinel"
+
+func publishSentinelNodeBirth(mqttClient mqtt.Client) {
+	birthPayload := &protobuf.Payload{
+		Timestamp: proto.Uint64(uint64(time.Now().UnixMilli())),
+		Metrics: []*protobuf.Payload_Metric{
+			{
+				Name:     proto.String("bdSeq"),
+				Datatype: proto.Uint32(uint32(protobuf.DataType_Int64.Number())),
+				Value:    &protobuf.Payload_Metric_LongValue{LongValue: 0},
+			},
+		},
+		Seq: proto.Uint64(0),
+	}
+	protoPayload, _ := proto.Marshal(birthPayload)
+
+	token := mqttClient.Publish("spBv1.0/test-group/NBIRTH/"+sentinelEdgeNodeID, byte(0), false, protoPayload)
+	token.Wait()
 }
 
 func publishNodeBirth(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metric) {
@@ -737,7 +795,10 @@ func publishDeviceData(mqttClient mqtt.Client, metrics []*protobuf.Payload_Metri
 // The testFn parameter takes a mqtt client so that each test can simulate the flow of expected messages from an
 // edge node/device point of view.
 func runAndCollectAllMetrics(t *testing.T, testFn func(mqtt.Client)) map[string][]sparkplughost.HostMetric {
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	// keep the host running until testFn's messages have been processed:
+	// a fixed host lifetime races against connect/subscribe latency since
+	// the retained STATE message is replaced with online=false on shutdown.
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	mqttClient := testMqttClient(t)
@@ -748,7 +809,17 @@ func runAndCollectAllMetrics(t *testing.T, testFn func(mqtt.Client)) map[string]
 	var wg sync.WaitGroup
 
 	receivedMetrics := make(map[string][]sparkplughost.HostMetric)
+	sentinelSeen := make(chan struct{}, 1)
 	metricHandler := func(metric sparkplughost.HostMetric) {
+		if metric.EdgeNodeDescriptor.EdgeNodeID == sentinelEdgeNodeID {
+			select {
+			case sentinelSeen <- struct{}{}:
+			default:
+			}
+
+			return
+		}
+
 		receivedMetrics[metric.Metric.GetName()] = append(receivedMetrics[metric.Metric.GetName()], metric)
 	}
 
@@ -772,6 +843,19 @@ func runAndCollectAllMetrics(t *testing.T, testFn func(mqtt.Client)) map[string]
 
 	waitForHostStatus(t, mqttClient, hostID, true)
 	testFn(mqttClient)
+
+	// publish a birth certificate for a sentinel edge node and wait for its
+	// metric callback: the broker preserves publish order from a single client,
+	// so once it arrives every message testFn published has been processed.
+	publishSentinelNodeBirth(mqttClient)
+
+	select {
+	case <-sentinelSeen:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed-out waiting for the sentinel birth certificate to be processed")
+	}
+
+	cancel()
 
 	// make sure to wait for all host callbacks to finish
 	wg.Wait()
@@ -833,11 +917,17 @@ func waitForHostStatus(t *testing.T, mqttClient mqtt.Client, hostID string, onli
 	case <-statusChan:
 		return
 	case <-time.NewTicker(5 * time.Second).C:
-		t.Fatalf("timed-out waiting for death certificate")
+		t.Fatalf("timed-out waiting for host status online=%v", online)
 	}
 }
 
-func waitForRebirthRequest(t *testing.T, mqttClient mqtt.Client) {
+// expectRebirthRequest subscribes to the edge node's command topic and returns
+// a function which blocks until a rebirth request arrives. Subscribing must
+// happen before publishing the messages which trigger the rebirth: the command
+// is not retained, so a late subscriber would miss it.
+func expectRebirthRequest(t *testing.T, mqttClient mqtt.Client) func() {
+	t.Helper()
+
 	rebirthChan := make(chan struct{}, 1)
 
 	token := mqttClient.Subscribe("spBv1.0/test-group/NCMD/test-node", byte(0), func(_ mqtt.Client, message mqtt.Message) {
@@ -846,7 +936,11 @@ func waitForRebirthRequest(t *testing.T, mqttClient mqtt.Client) {
 
 		for _, metric := range payload.Metrics {
 			if metric.GetName() == "Node Control/Rebirth" && metric.GetBooleanValue() {
-				rebirthChan <- struct{}{}
+				select {
+				case rebirthChan <- struct{}{}:
+				default:
+				}
+
 				return
 			}
 		}
@@ -855,10 +949,11 @@ func waitForRebirthRequest(t *testing.T, mqttClient mqtt.Client) {
 		t.Fatal(token.Error())
 	}
 
-	select {
-	case <-rebirthChan:
-		return
-	case <-time.NewTicker(1 * time.Second).C:
-		t.Fatalf("timed-out waiting for rebirth request")
+	return func() {
+		select {
+		case <-rebirthChan:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed-out waiting for rebirth request")
+		}
 	}
 }
