@@ -2,7 +2,6 @@ package sparkplughost
 
 import (
 	"crypto/tls"
-	"io"
 	"log/slog"
 	"time"
 )
@@ -31,7 +30,7 @@ type Option func(*config)
 
 func defaultConfig() *config {
 	return &config{
-		logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger:            slog.New(slog.DiscardHandler),
 		metricHandler:     defaultMetricHandler,
 		disconnectTimeout: 5 * time.Second,
 		reorderTimeout:    5 * time.Second,
@@ -57,7 +56,7 @@ func WithMetricHandler(metricHandler MetricHandler) Option {
 
 // WithLogger sets a `*slog.Logger` instance to use by the Host application.
 // This allows clients to enable/disable DEBUG and INFO messages.
-// The default logger sends everything to `io.Discard`.
+// The default logger discards all log output.
 func WithLogger(logger *slog.Logger) Option {
 	return func(c *config) {
 		c.logger = logger
