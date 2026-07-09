@@ -36,7 +36,12 @@ jobs:
       - name: Send coverage
         env:
           COVERALLS_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
-        run: goveralls -coverprofile=covprofile -service=github
+        # exclude the example app and generated protobuf code from the
+        # coverage report: they are never tested, so line-count churn in
+        # them shifts the ratio and trips Coveralls' fail-on-decrease check
+        run: |
+          grep -vE '^github\.com/EvergenEnergy/sparkplughost/(examples|protobuf)/' covprofile > covprofile.filtered
+          goveralls -coverprofile=covprofile.filtered -service=github
 
   lint:
     runs-on: ubuntu-latest
