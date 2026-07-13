@@ -20,6 +20,9 @@ type config struct {
 	metricHandler     MetricHandler
 	disconnectTimeout time.Duration
 	reorderTimeout    time.Duration
+	mqttKeepAlive     time.Duration
+	mqttPingTimeout   time.Duration
+	mqttWriteTimeout  time.Duration
 }
 
 // Option allows clients to configure the Host Application.
@@ -31,6 +34,15 @@ func defaultConfig() *config {
 		metricHandler:     defaultMetricHandler,
 		disconnectTimeout: 5 * time.Second,
 		reorderTimeout:    5 * time.Second,
+		mqttKeepAlive:     30 * time.Second,
+		mqttPingTimeout:   10 * time.Second,
+		// A non-zero write timeout keeps a blocked outbound write (publish/
+		// subscribe/ack into a dead socket whose send buffer has filled) from
+		// stalling forever, so connection-lost handling can run and AutoReconnect
+		// can recover. See WithMqttWriteTimeout. All three default to paho's own
+		// defaults except that WriteTimeout, which paho leaves at 0 (block
+		// forever), is set to a finite value here.
+		mqttWriteTimeout: 10 * time.Second,
 	}
 }
 
@@ -57,6 +69,56 @@ func WithLogger(logger *slog.Logger) Option {
 func WithReorderTimeout(timeout time.Duration) Option {
 	return func(c *config) {
 		c.reorderTimeout = timeout
+	}
+}
+
+// WithMqttKeepAlive sets the MQTT keepalive interval on the underlying paho
+// client: the client sends a PINGREQ after this much idle time, and a missing
+// PINGRESP (see WithMqttPingTimeout) is how an idle half-open connection is
+// detected so AutoReconnect can kick in.
+// Default: 30 seconds.
+//
+// Note: paho stores the keepalive as whole seconds, so a sub-second value
+// truncates to 0. A value of 0 disables keepalive entirely — no PINGs are sent
+// and an idle half-open connection can no longer be detected — so avoid 0 unless
+// that is genuinely intended.
+func WithMqttKeepAlive(keepAlive time.Duration) Option {
+	return func(c *config) {
+		c.mqttKeepAlive = keepAlive
+	}
+}
+
+// WithMqttPingTimeout sets how long the client waits for a PINGRESP after
+// sending a keepalive PINGREQ before treating the connection as lost. This is
+// the knob that governs idle half-open detection latency: with an idle
+// connection the small PINGREQ is written without blocking and the missing
+// PINGRESP triggers reconnection after this timeout.
+// Default: 10 seconds (paho's default).
+func WithMqttPingTimeout(pingTimeout time.Duration) Option {
+	return func(c *config) {
+		c.mqttPingTimeout = pingTimeout
+	}
+}
+
+// WithMqttWriteTimeout sets the MQTT write timeout on the underlying paho client.
+//
+// This matters for reconnection robustness. paho applies this timeout to
+// outbound application writes (publishes, subscriptions, acknowledgements) in its
+// outgoing worker. On a half-open connection whose kernel send buffer has filled
+// — e.g. the host keeps publishing STATE/commands into a dead socket — such a
+// write blocks indefinitely with paho's default of no write timeout. That stalls
+// the outgoing worker (and can stall the keepalive goroutine on its own PING
+// write, preventing the ping-timeout check from ever running), so ConnectionLost
+// is never reported and AutoReconnect never fires — the client sits silently
+// disconnected. A non-zero write timeout makes the blocked write fail, which
+// surfaces the lost connection and lets AutoReconnect recover.
+//
+// Note: an idle connection is instead covered by keepalive + ping timeout above;
+// this timeout is specifically for the blocked-outbound-write case.
+// Default: 10 seconds. Set to 0 to restore paho's blocking behaviour.
+func WithMqttWriteTimeout(writeTimeout time.Duration) Option {
+	return func(c *config) {
+		c.mqttWriteTimeout = writeTimeout
 	}
 }
 

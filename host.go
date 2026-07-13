@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/EvergenEnergy/sparkplughost/protobuf"
@@ -27,7 +28,11 @@ type HostApplication struct {
 	messageProcessor          messageProcessor
 	disconnectTimeout         time.Duration
 	reorderTimeout            time.Duration
+	mqttKeepAlive             time.Duration
+	mqttPingTimeout           time.Duration
+	mqttWriteTimeout          time.Duration
 	commandPublisher          *commandPublisher
+	shuttingDown              atomic.Bool
 }
 
 func NewHostApplication(brokerConfigs []MqttBrokerConfig, hostID string, opts ...Option) (*HostApplication, error) {
@@ -53,6 +58,9 @@ func NewHostApplication(brokerConfigs []MqttBrokerConfig, hostID string, opts ..
 		metricHandler:             cfg.metricHandler,
 		disconnectTimeout:         cfg.disconnectTimeout,
 		reorderTimeout:            cfg.reorderTimeout,
+		mqttKeepAlive:             cfg.mqttKeepAlive,
+		mqttPingTimeout:           cfg.mqttPingTimeout,
+		mqttWriteTimeout:          cfg.mqttWriteTimeout,
 		mqttClients:               make(map[string]mqtt.Client, len(brokerConfigs)),
 		lastWillMessageTimestamps: make(map[string]time.Time, len(brokerConfigs)),
 	}, nil
@@ -61,6 +69,7 @@ func NewHostApplication(brokerConfigs []MqttBrokerConfig, hostID string, opts ..
 // Run will connect to the mqtt broker and block until
 // ctx is canceled.
 func (h *HostApplication) Run(ctx context.Context) error {
+	h.shuttingDown.Store(false)
 	h.initClients()
 
 	for brokerURL, client := range h.mqttClients {
@@ -76,6 +85,8 @@ func (h *HostApplication) Run(ctx context.Context) error {
 
 	// disconnect gracefully by publishing the death certificate before
 	// sending the disconnect command to the MQTT broker.
+	h.shuttingDown.Store(true)
+
 	tokens := h.publishOnlineStatus(false, time.Now().UTC())
 
 	for _, token := range tokens {
@@ -120,6 +131,12 @@ func (h *HostApplication) initClients() {
 		mqttOpts.SetClientID(h.hostID)
 		mqttOpts.SetCleanSession(true)
 		mqttOpts.SetAutoReconnect(true)
+		mqttOpts.SetKeepAlive(h.mqttKeepAlive)
+		mqttOpts.SetPingTimeout(h.mqttPingTimeout)
+		// A non-zero write timeout keeps a blocked outbound write on a half-open
+		// connection (full send buffer) from stalling forever, so ConnectionLost is
+		// reported and AutoReconnect can recover. See WithMqttWriteTimeout.
+		mqttOpts.SetWriteTimeout(h.mqttWriteTimeout)
 		mqttOpts.SetOrderMatters(true)
 		mqttOpts.SetOnConnectHandler(h.onConnect(brokerURL))
 		mqttOpts.SetReconnectingHandler(h.onReconnect(brokerURL))
@@ -230,8 +247,10 @@ func (h *HostApplication) stateHandler(brokerURL string) mqtt.MessageHandler {
 		// its own Host Application ID with an online value of false, it MUST immediately republish its STATE
 		// message to the same MQTT Server with an online value of true and the timestamp set to the same
 		// value that was used for the timestamp in its own prior MQTT CONNECT packet Will Message
-		// payload
-		if !status.Online {
+		// payload.
+		// During a graceful shutdown the online=false message is our own death
+		// certificate echoed back, and republishing would overwrite it.
+		if !status.Online && !h.shuttingDown.Load() {
 			// this runs on a separate goroutine due to paho's mqtt recommendation
 			// that "callback functions must not block or call functions within this
 			// package that may block (e.g. Publish)"
