@@ -34,6 +34,9 @@ jobs:
         run: go install github.com/mattn/goveralls@latest
 
       - name: Send coverage
+        # fork PRs can't access the Coveralls token secret, so the upload
+        # can never succeed there: skip it
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           COVERALLS_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
         # exclude the example app and generated protobuf code from the
